@@ -1,0 +1,84 @@
+#!/bin/bash -e
+NETNS=proxy-ns
+
+HOST_VETH=veth0
+HOST_ADDR=192.168.64.1/24
+GUEST_VETH=ceth0
+GUEST_ADDR=192.168.64.100/24
+
+TUN_IF=tun0
+TUN_IP=10.0.0.1
+TUN_NETMASK=255.255.255.0
+
+RESOLV_FILE=/tmp/resolv.conf
+
+SOCKS5_PORT=${SOCKS5_PORT:-1080}
+DNS=${DNS:-9.9.9.9}
+TCP_ONLY=${TCP_ONLY:-0}
+
+RESOLV_CONTENT="nameserver $DNS"
+SOCKS5_SERVER=192.168.64.1:${SOCKS5_PORT} # UDP support required
+
+function exit_if_not_root {
+    if [[ $(id -u) -ne 0 ]]; then
+        echo "Error: Not executing as root"
+        exit 1;
+    fi
+}
+
+function ns-exec {
+    ip netns exec $NETNS "$@"
+}
+
+function resolv-gen {
+    if [[ ! $TCP_ONLY -eq 0 ]]; then
+       RESOLV_CONTENT="$RESOLV_CONTENT"$'\n'"options use-vc"
+    fi
+
+    rm -rf $RESOLV_FILE
+    echo "$RESOLV_CONTENT" > $RESOLV_FILE
+}
+
+function up {
+    ip netns add $NETNS
+
+    ip link add $HOST_VETH type veth peer name $GUEST_VETH
+    ip link set $HOST_VETH up
+    ip addr add $HOST_ADDR dev $HOST_VETH
+
+    ip link set $GUEST_VETH netns $NETNS
+    ns-exec ip link set lo up
+    ns-exec ip link set $GUEST_VETH up
+    ns-exec ip addr add $GUEST_ADDR dev $GUEST_VETH
+
+    ns-exec \
+        badvpn-tun2socks \
+        --tundev $TUN_IF \
+        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
+        --socks-server-addr $SOCKS5_SERVER --socks5-udp &
+    sleep 0.5
+
+    resolv-gen
+
+    ns-exec ip link set $TUN_IF up
+    ns-exec ip addr add $TUN_IP/24 dev $TUN_IF
+    ns-exec ip route add default via $TUN_IP dev $TUN_IF
+
+    wait
+}
+
+function down {
+    ip link del $HOST_VETH
+    ip netns del $NETNS
+}
+
+function cleanup {
+    wait
+    down
+}
+
+exit_if_not_root
+
+trap cleanup EXIT
+
+up
