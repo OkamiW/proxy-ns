@@ -11,6 +11,11 @@ PREFIX  = /usr/local
 $(P): $(SRC)
 	$(CC) $(CFLAGS) $< -o $@
 
+.PHONY: clean
+clean:
+	rm -f $(P)
+
+.PHONY: install
 install: $(P)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install -m 755 $(P) $(DESTDIR)$(PREFIX)/bin
