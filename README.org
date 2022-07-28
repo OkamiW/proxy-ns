@@ -1,0 +1,35 @@
+* proxy-ns
+[[https://github.com/OkamiW/proxy-ns][proxy-ns]] is a lightweight(about 100 lines of code) tool to redirect
+any programs' traffic to your local socks5 server.
+
+Unlike =proxychains= (which uses =LD_PRELOAD= hack), it sets up a
+vpn(using =tun2socks=) within a specific linux network namespace, and
+execute the target program there.
+
+** Features
+It has several advantages over =proxychains=:
+- UDP support
+- Works for statically linked programs
+
+** Installation
+*** Arch Linux
+proxy-ns is available at [[https://aur.archlinux.org/packages/proxy-ns][AUR]]
+
+** Configuration
+You may need to change =SOCKS5_PORT=
+#+begin_src conf
+SOCKS5_PORT=1080
+
+DNS=9.9.9.9
+
+# Set TCP_ONLY to 1 to force DNS over TCP
+TCP_ONLY=0
+#+end_src
+
+** FAQ
+*** Error: "Could not resolve host"
+Your proxy server probably doesn't have UDP support, so dns lookup
+won't work by default.
+
+You can enable =TCP_ONLY= in =/etc/proxy-nsd.conf=, to force dns lookup
+to use TCP instead.
