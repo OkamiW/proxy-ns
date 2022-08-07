@@ -23,13 +23,5 @@ SOCKS5_PORT=1080
 DNS=9.9.9.9
 
 # Set TCP_ONLY to 1 to force DNS over TCP
-TCP_ONLY=0
+TCP_ONLY=1
 #+end_src
-
-** FAQ
-*** Error: "Could not resolve host"
-Your proxy server probably doesn't have UDP support, so dns lookup
-won't work by default.
-
-You can enable =TCP_ONLY= in =/etc/proxy-nsd.conf=, to force dns lookup
-to use TCP instead.
