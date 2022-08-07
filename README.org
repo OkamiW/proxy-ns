@@ -25,8 +25,8 @@ SOCKS5_PORT=1080
 
 DNS=9.9.9.9
 
-# Set TCP_ONLY to 1 to force DNS over TCP
-TCP_ONLY=1
+# Set DNS_OVER_TCP to 1 to force DNS over TCP
+DNS_OVER_TCP=1
 #+end_src
 
 ** Internal
