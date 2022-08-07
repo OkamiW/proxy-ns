@@ -16,6 +16,9 @@ It has several advantages over =proxychains=:
 proxy-ns is available at [[https://aur.archlinux.org/packages/proxy-ns][AUR]]
 
 ** Configuration
+If you install it through AUR, the config file should be at
+=/etc/proxy-nsd.conf=.
+
 You may need to change =SOCKS5_PORT=
 #+begin_src conf
 SOCKS5_PORT=1080
@@ -25,3 +28,20 @@ DNS=9.9.9.9
 # Set TCP_ONLY to 1 to force DNS over TCP
 TCP_ONLY=1
 #+end_src
+
+** Internal
+=proxy-nsd= would create a separate network namespace, and set up VPN
+there(with =badvpn-tun2socks=, redirecting VPN traffic to your socks5
+server).
+
+=proxy-ns= execute your target program in the previous created network
+namespace.
+
+** FAQ
+*** Error: "Connection refused/timeout"
+Your local socks5 proxy server needs to listen on =0.0.0.0=
+(and =::= for IPv6),
+
+and your firewall should allow traffic from =192.168.64.1/24=
+(subnet used by =proxy-nsd=) to reach the port
+your proxy server is listening on.
