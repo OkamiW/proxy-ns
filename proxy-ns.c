@@ -16,6 +16,26 @@
 #define RESOLV_FILE "/tmp/resolv.conf"
 #define RESOLV_CONF "/etc/resolv.conf"
 
+__attribute__ ((format (printf, 1, 0))) static void
+warnv (const char *format, va_list args)
+{
+  fprintf (stderr, "proxy-ns: ");
+  vfprintf (stderr, format, args);
+  fprintf (stderr, "\n");
+}
+
+void
+die (const char *format, ...)
+{
+  va_list args;
+
+  va_start (args, format);
+  warnv (format, args);
+  va_end (args);
+
+  exit (1);
+}
+
 void
 die_with_error (const char *format, ...)
 {
@@ -48,7 +68,18 @@ main (int argc, char **argv)
 
   netns = open (NETNS, O_RDONLY | O_CLOEXEC);
   if (netns < 0)
-    die_with_error ("Failed to open network namespace fd");
+    {
+      if (errno != ENOENT)
+        {
+          die_with_error ("Failed to open network namespace fd");
+        }
+      else
+        {
+          die (
+            "Network namespace fd not found, is proxy-nsd running?");
+        }
+    }
+
   if (setns (netns, CLONE_NEWNET) != 0)
     die_with_error ("Failed to attach to network namespace");
   close (netns);
@@ -62,11 +93,11 @@ main (int argc, char **argv)
   if (mount (RESOLV_FILE, RESOLV_CONF, NULL, MS_SILENT | MS_BIND,
              NULL)
       != 0)
-    die_with_error ("Failed to mount bind file");
+    die_with_error ("Failed to mount bind resolv.conf");
 
   argv[argc] = (char *) NULL;
   if (execvp (argv[0], argv) != 0)
-    die_with_error ("Failed to execv");
+    die_with_error ("Failed to exec '%s'", argv[0]);
 
   return 0;
 }
