@@ -26,3 +26,6 @@ install: $(P)
 
 	mkdir -p $(DESTDIR)/etc/
 	install -m 644 $(CONFIG) $(DESTDIR)/etc/
+
+	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/$(P)
+	install -m 644 README.org $(DESTDIR)$(PREFIX)/share/doc/$(P)/
