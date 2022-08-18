@@ -26,11 +26,7 @@ function exit_if_not_root {
     fi
 }
 
-function ns-exec {
-    ip netns exec $NETNS "$@"
-}
-
-function resolv-gen {
+function resolv_gen {
     if [[ ! $DNS_OVER_TCP -eq 0 ]]; then
         RESOLV_CONTENT="$RESOLV_CONTENT"$'\n'"options use-vc"
     fi
@@ -39,22 +35,22 @@ function resolv-gen {
     echo "$RESOLV_CONTENT" > $RESOLV_FILE
 }
 
-function tun2socks {
+function tun_to_socks {
     local logger_option
     if [[ -t 1 ]]; then
-        logger_option="stdout"
+        logger_option=stdout
     else
-        logger_option="syslog"
+        logger_option=syslog
     fi
 
-    setcap cap_net_admin=ep $(which badvpn-tun2socks)
-    ns-exec \
-        su nobody \
-        -s "$(which badvpn-tun2socks)" -- \
-        --tundev $TUN_IF \
-        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
-        --socks-server-addr $SOCKS5_SERVER --socks5-udp \
-        --logger "$logger_option"
+    setcap cap_net_admin=ep "$(which badvpn-tun2socks)"
+    ip netns exec $NETNS \
+       su nobody \
+       -s "$(which badvpn-tun2socks)" -- \
+       --tundev $TUN_IF \
+       --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
+       --socks-server-addr $SOCKS5_SERVER --socks5-udp \
+       --logger $logger_option
 }
 
 function up {
@@ -65,18 +61,18 @@ function up {
     ip addr add $HOST_ADDR dev $HOST_VETH
 
     ip link set $GUEST_VETH netns $NETNS
-    ns-exec ip link set lo up
-    ns-exec ip link set $GUEST_VETH up
-    ns-exec ip addr add $GUEST_ADDR dev $GUEST_VETH
+    ip netns exec $NETNS ip link set lo up
+    ip netns exec $NETNS ip link set $GUEST_VETH up
+    ip netns exec $NETNS ip addr add $GUEST_ADDR dev $GUEST_VETH
 
-    tun2socks &
+    tun_to_socks &
     sleep 0.5
 
-    resolv-gen
+    resolv_gen
 
-    ns-exec ip link set $TUN_IF up
-    ns-exec ip addr add $TUN_IP/24 dev $TUN_IF
-    ns-exec ip route add default via $TUN_IP dev $TUN_IF
+    ip netns exec $NETNS ip link set $TUN_IF up
+    ip netns exec $NETNS ip addr add $TUN_IP/24 dev $TUN_IF
+    ip netns exec $NETNS ip route add default via $TUN_IP dev $TUN_IF
 
     wait
 }
