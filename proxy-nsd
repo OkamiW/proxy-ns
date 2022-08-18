@@ -32,7 +32,7 @@ function ns-exec {
 
 function resolv-gen {
     if [[ ! $DNS_OVER_TCP -eq 0 ]]; then
-       RESOLV_CONTENT="$RESOLV_CONTENT"$'\n'"options use-vc"
+        RESOLV_CONTENT="$RESOLV_CONTENT"$'\n'"options use-vc"
     fi
 
     rm -rf $RESOLV_FILE
