@@ -39,6 +39,16 @@ function resolv-gen {
     echo "$RESOLV_CONTENT" > $RESOLV_FILE
 }
 
+function tun2socks {
+    setcap cap_net_admin=ep $(which badvpn-tun2socks)
+    ns-exec \
+        su nobody \
+        -s "$(which badvpn-tun2socks)" -- \
+        --tundev $TUN_IF \
+        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
+        --socks-server-addr $SOCKS5_SERVER --socks5-udp
+}
+
 function up {
     ip netns add $NETNS
 
@@ -51,11 +61,7 @@ function up {
     ns-exec ip link set $GUEST_VETH up
     ns-exec ip addr add $GUEST_ADDR dev $GUEST_VETH
 
-    ns-exec \
-        badvpn-tun2socks \
-        --tundev $TUN_IF \
-        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
-        --socks-server-addr $SOCKS5_SERVER --socks5-udp &
+    tun2socks &
     sleep 0.5
 
     resolv-gen
