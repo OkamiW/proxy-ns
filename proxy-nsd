@@ -40,6 +40,13 @@ function resolv-gen {
 }
 
 function tun2socks {
+    local logger_option
+    if [[ -t 1 ]]; then
+        logger_option="stdout"
+    else
+        logger_option="syslog"
+    fi
+
     setcap cap_net_admin=ep $(which badvpn-tun2socks)
     ns-exec \
         su nobody \
@@ -47,7 +54,7 @@ function tun2socks {
         --tundev $TUN_IF \
         --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
         --socks-server-addr $SOCKS5_SERVER --socks5-udp \
-        --logger syslog
+        --logger "$logger_option"
 }
 
 function up {
