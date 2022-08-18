@@ -46,7 +46,8 @@ function tun2socks {
         -s "$(which badvpn-tun2socks)" -- \
         --tundev $TUN_IF \
         --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
-        --socks-server-addr $SOCKS5_SERVER --socks5-udp
+        --socks-server-addr $SOCKS5_SERVER --socks5-udp \
+        --logger syslog
 }
 
 function up {

@@ -3,7 +3,7 @@ Description=proxy-ns
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/stdbuf -oL /usr/bin/proxy-nsd
+ExecStart=/usr/bin/proxy-nsd
 EnvironmentFile=/etc/proxy-nsd.conf
 
 [Install]
