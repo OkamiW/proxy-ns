@@ -37,11 +37,24 @@ server).
 =proxy-ns= execute your target program in the previous created network
 namespace.
 
-** FAQ
-*** Error: "Connection refused/timeout"
+** Caveats
+Because =proxy-ns= execute the target program in a separate network
+namespace, the target program cannot access any service listening on
+your host network. (such as thoses listening on =127.0.0.1=)
+
+Thereby, there are several things to notice:
+
+*** Local socks5 server
 Your local socks5 proxy server needs to listen on =0.0.0.0=
 (and =::= for IPv6),
 
 and your firewall should allow traffic from =192.168.64.1/24=
 (subnet used by =proxy-nsd=) to reach the port
 your proxy server is listening on.
+
+*** Programs proxy settings
+If you use =proxy-ns= for programs already have proxy settings in
+effect, the program will probably fail to connect to the network.
+
+Then you should either only use the proxy settings of the program,
+or only use =proxy-ns=.
