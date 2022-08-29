@@ -17,7 +17,8 @@ DNS=${DNS:-9.9.9.9}
 DNS_OVER_TCP=${DNS_OVER_TCP:-1}
 
 RESOLV_CONTENT="nameserver $DNS"
-SOCKS5_SERVER=192.168.64.1:${SOCKS5_PORT} # UDP support required
+SOCKS5_ADDR=${SOCKS5_ADDR:-${HOST_ADDR%%/*}}
+SOCKS5_SERVER=${SOCKS5_ADDR}:${SOCKS5_PORT} # UDP support required
 
 function exit_if_not_root {
     if [[ $(id -u) -ne 0 ]]; then
@@ -33,6 +34,16 @@ function resolv_gen {
 
     rm -rf $RESOLV_FILE
     echo "$RESOLV_CONTENT" > $RESOLV_FILE
+}
+
+function setup_route {
+    ip netns exec ${NETNS} ip route add ${SOCKS5_ADDR}/32 via ${GUEST_ADDR%%/*} dev ${GUEST_VETH%%/*}
+}
+
+function setup_nat {
+    iptables -t nat -A POSTROUTING --source ${GUEST_ADDR%%/*} --destination ${SOCKS5_ADDR} -p tcp --dport ${SOCKS5_PORT} -j MASQUERADE
+    iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    iptables -A FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -p tcp --dport ${SOCKS5_PORT} -j ACCEPT
 }
 
 function tun_to_socks {
@@ -64,6 +75,11 @@ function up {
     ip netns exec $NETNS ip link set lo up
     ip netns exec $NETNS ip link set $GUEST_VETH up
     ip netns exec $NETNS ip addr add $GUEST_ADDR dev $GUEST_VETH
+
+    if [[ ${SOCKS5_ADDR} != ${HOST_ADDR%%/*} ]]; then
+        setup_route
+        setup_nat
+    fi
 
     tun_to_socks &
     sleep 0.5
