@@ -37,13 +37,13 @@ function resolv_gen {
 }
 
 function setup_route {
-    ip netns exec ${NETNS} ip route add ${SOCKS5_ADDR}/32 via ${GUEST_ADDR%%/*} dev ${GUEST_VETH%%/*}
+    ip netns exec ${NETNS} ip route add ${SOCKS5_ADDR}/32 via ${HOST_ADDR%%/*} dev ${GUEST_VETH%%/*}
 }
 
 function setup_nat {
-    iptables -t nat -A POSTROUTING --source ${GUEST_ADDR%%/*} --destination ${SOCKS5_ADDR} -p tcp --dport ${SOCKS5_PORT} -j MASQUERADE
-    iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-    iptables -A FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -p tcp --dport ${SOCKS5_PORT} -j ACCEPT
+    iptables -t nat -I POSTROUTING --source ${GUEST_ADDR%%/*} --destination ${SOCKS5_ADDR} -j MASQUERADE
+    iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    iptables -I FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -j ACCEPT
 }
 
 function tun_to_socks {
