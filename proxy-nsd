@@ -46,6 +46,12 @@ function setup_nat {
     iptables -I FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -j ACCEPT
 }
 
+function remove_nat {
+    iptables -t nat -D POSTROUTING --source ${GUEST_ADDR%%/*} --destination ${SOCKS5_ADDR} -j MASQUERADE
+    iptables -D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    iptables -D FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -j ACCEPT
+}
+
 function tun_to_socks {
     local logger_option
     if [[ -t 1 ]]; then
@@ -96,6 +102,10 @@ function up {
 function down {
     ip link del $HOST_VETH
     ip netns del $NETNS
+
+    if [[ ${SOCKS5_ADDR} != ${HOST_ADDR%%/*} ]]; then
+        remove_nat
+    fi
 }
 
 function cleanup {
