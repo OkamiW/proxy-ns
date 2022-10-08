@@ -1,4 +1,6 @@
 * proxy-ns
+*The project repo is migrated to https://git.ookami.one/cgit/proxy-ns.*
+
 [[https://github.com/OkamiW/proxy-ns][proxy-ns]] is a lightweight(about 100 lines of code) tool to redirect
 any programs' traffic to your local socks5 server.
 
