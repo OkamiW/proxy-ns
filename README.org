@@ -21,12 +21,19 @@ If you install it through AUR, the config file should be at
 
 You may need to change =SOCKS5_PORT=
 #+begin_src conf
-SOCKS5_PORT=1080
+  SOCKS5_PORT=1080
 
-DNS=9.9.9.9
+  DNS=9.9.9.9
 
-# Set DNS_OVER_TCP to 1 to force DNS over TCP
-DNS_OVER_TCP=1
+  # Set DNS_OVER_TCP to 1 to force DNS over TCP
+  DNS_OVER_TCP=1
+#+end_src
+
+** Setup
+If you install it through AUR, you only need to:
+#+begin_src sh
+  sudo systemctl enable proxy-nsd
+  sudo systemctl start proxy-nsd
 #+end_src
 
 ** Internal
