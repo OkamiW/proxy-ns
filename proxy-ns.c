@@ -60,8 +60,12 @@ main (int argc, char **argv)
 {
   int netns;
 
-  if (argc < 2)
-    exit (1);
+  if (argc < 2 || strcmp (argv[1], "--help") == 0)
+    {
+      puts ("Usage: proxy-ns [command [argument ...]]");
+      puts ("  More help in README file");
+      exit (0);
+    }
 
   argv++;
   argc--;
