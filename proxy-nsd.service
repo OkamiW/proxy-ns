@@ -1,6 +1,6 @@
 [Unit]
 Description=proxy-ns
-After=network-online.target
+After=network.target
 
 [Service]
 ExecStart=/usr/bin/proxy-nsd
