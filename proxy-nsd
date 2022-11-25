@@ -85,6 +85,8 @@ function up {
     if [[ ${SOCKS5_ADDR} != ${HOST_ADDR%%/*} ]]; then
         setup_route
         setup_nat
+    else
+        iptables -I INPUT --source ${GUEST_ADDR%%/*}/32 -j ACCEPT
     fi
 
     tun_to_socks &
@@ -105,6 +107,8 @@ function down {
 
     if [[ ${SOCKS5_ADDR} != ${HOST_ADDR%%/*} ]]; then
         remove_nat
+    else
+        iptables -D INPUT --source ${GUEST_ADDR%%/*}/32 -j ACCEPT
     fi
 }
 
