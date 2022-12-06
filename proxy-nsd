@@ -98,6 +98,11 @@ function up {
     ip netns exec $NETNS ip addr add $TUN_IP/24 dev $TUN_IF
     ip netns exec $NETNS ip route add default via $TUN_IP dev $TUN_IF
 
+    # redirect traffic to lo
+    ip netns exec ${NETNS} ip route del local 127.0.0.1 dev lo || true
+    ip netns exec ${NETNS} ip route del local 127.0.0.0/8 dev lo || true
+    ip netns exec ${NETNS} sysctl net.ipv4.conf.${TUN_IF}.route_localnet=1 &> /dev/null || true
+
     wait
 }
 
