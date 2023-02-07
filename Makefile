@@ -19,6 +19,8 @@ clean:
 install: $(P)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	install -m 755 $(P) $(DESTDIR)$(PREFIX)/bin
+	setcap cap_sys_admin=ep $(DESTDIR)$(PREFIX)/bin/$(P)
+
 	install -m 755 $(UTILS) $(DESTDIR)$(PREFIX)/bin
 
 	mkdir -p $(DESTDIR)$(PREFIX)/lib/systemd/system
