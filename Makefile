@@ -1,33 +1,34 @@
-P       = proxy-ns
-SRC     = proxy-ns.c
+CFLAGS  := -ansi -pedantic -Wall -Wextra -O3 -g
+PREFIX  := /usr/local
 
-UTILS   = proxy-nsd
-SERVICE = proxy-nsd.service
-CONFIG  = proxy-nsd.conf
+ALL     := proxy-ns
 
-CFLAGS  = -ansi -pedantic -Wall -Wextra -O3 -g
-PREFIX  = /usr/local
+.PHONY: all
+all: $(ALL)
 
-$(P): $(SRC)
+proxy-ns: proxy-ns.c
 	$(CC) $(CFLAGS) $< -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(P)
+	rm -f proxy-ns proxy-nsd.service
+
+proxy-nsd.service: proxy-nsd.service.in
+	sed 's|@PREFIX@|$(PREFIX)|' $< > $@ || rm $@
 
 .PHONY: install
-install: $(P)
+install: $(ALL) proxy-nsd.service
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	install -m 755 $(P) $(DESTDIR)$(PREFIX)/bin
-	setcap cap_sys_admin=ep $(DESTDIR)$(PREFIX)/bin/$(P)
+	install -m 755 proxy-ns $(DESTDIR)$(PREFIX)/bin/
+	setcap cap_sys_admin=ep $(DESTDIR)$(PREFIX)/bin/proxy-ns
 
-	install -m 755 $(UTILS) $(DESTDIR)$(PREFIX)/bin
+	install -m 755 proxy-nsd $(DESTDIR)$(PREFIX)/bin/
 
 	mkdir -p $(DESTDIR)$(PREFIX)/lib/systemd/system
-	install -m 644 $(SERVICE) $(DESTDIR)$(PREFIX)/lib/systemd/system
+	install -m 644 proxy-nsd.service $(DESTDIR)$(PREFIX)/lib/systemd/system/
 
 	mkdir -p $(DESTDIR)/etc/
-	install -m 644 $(CONFIG) $(DESTDIR)/etc/
+	install -m 644 proxy-nsd.conf $(DESTDIR)/etc/
 
-	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/$(P)
-	install -m 644 README.org $(DESTDIR)$(PREFIX)/share/doc/$(P)/
+	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/proxy-ns
+	install -m 644 README.org $(DESTDIR)$(PREFIX)/share/doc/proxy-ns/

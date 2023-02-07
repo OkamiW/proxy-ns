@@ -3,7 +3,7 @@ Description=proxy-ns
 After=network.target
 
 [Service]
-ExecStart=proxy-nsd
+ExecStart=@PREFIX@/bin/proxy-nsd
 EnvironmentFile=/etc/proxy-nsd.conf
 
 [Install]
