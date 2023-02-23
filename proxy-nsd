@@ -1,25 +1,47 @@
-#!/bin/bash -e
+#!/bin/bash
+
+set -e
+
+#
+# Constant
+#
 NETNS=proxy-ns
 
-HOST_VETH=veth0
-HOST_ADDR=192.168.64.1/24
-GUEST_VETH=ceth0
-GUEST_ADDR=192.168.64.100/24
+RESOLV_FILE="/tmp/resolv.conf"
 
-TUN_IF=tun0
-TUN_IP=10.0.0.1
-TUN_NETMASK=255.255.255.0
 
-RESOLV_FILE=/tmp/resolv.conf
+#
+# Interface config
+#
+HOST_VETH=${HOST_VETH:-veth0}
+HOST_ADDR=${HOST_ADDR:-172.31.0.1/24}
+GUEST_VETH=${GUEST_VETH:-ceth0}
+GUEST_ADDR=${GUEST_ADDR:-172.31.0.100/24}
 
+TUN_IF=${TUN_IF:-tun0}
+TUN_IP=${TUN_IP:-10.0.0.1}
+TUN_NETMASK=${TUN_NETMASK:-255.255.255.0}
+
+
+#
+# Network config
+#
+SOCKS5_ADDR=${SOCKS5_ADDR:-${HOST_ADDR%%/*}}
 SOCKS5_PORT=${SOCKS5_PORT:-1080}
 DNS=${DNS:-9.9.9.9}
 DNS_OVER_TCP=${DNS_OVER_TCP:-1}
 
-RESOLV_CONTENT="nameserver $DNS"
-SOCKS5_ADDR=${SOCKS5_ADDR:-${HOST_ADDR%%/*}}
-SOCKS5_SERVER=${SOCKS5_ADDR}:${SOCKS5_PORT} # UDP support required
 
+#
+# Global variables
+#
+RESOLV_CONTENT="nameserver $DNS"
+SOCKS5_SERVER="${SOCKS5_ADDR}:${SOCKS5_PORT}"
+
+
+#
+# Functions
+#
 function exit_if_not_root {
     if [[ $(id -u) -ne 0 ]]; then
         echo "Error: Not executing as root"

@@ -28,10 +28,10 @@ You may need to change =SOCKS5_ADDR= and =SOCKS5_PORT=.
   # in different network namespace, they don't share the same loopback.
 
   # So if you're running a socks5 server locally,
-  # it must be listening on "192.168.64.1" (or simply "0.0.0.0"),
-  # and your firewall must allow all traffic from "192.168.64.100" to it.
+  # it must be listening on "172.31.0.1" (or simply "0.0.0.0"),
+  # and your firewall must allow all traffic from "172.31.0.100" to it.
 
-  SOCKS5_ADDR=192.168.64.1
+  SOCKS5_ADDR=172.31.0.1
 
   # Port of your socks5 server.
   SOCKS5_PORT=1080
@@ -67,7 +67,7 @@ namespace, the services listening on =127.0.0.1= or =::1= inside =proxy-ns=
 cannot be accessed outside =proxy-ns=.
 
 (If the service inside =proxy-ns= is listening on =0.0.0.0= or =::=,
-you can access them outside =proxy-ns= by =192.168.64.100=.)
+you can access them outside =proxy-ns= by =GUEST_ADDR=.)
 
 (It's possible to access services listening outside =proxy-ns= inside
 =proxy-ns= though, if your proxy running outside =proxy-ns= supports
