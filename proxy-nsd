@@ -2,12 +2,13 @@
 
 set -e
 
-#
-# Constant
-#
-NETNS=proxy-ns
+# Read configuration
+if [[ -r "$1" ]]; then
+    source "$1"
+fi
 
-RESOLV_FILE="/tmp/resolv.conf"
+# Namespace Config
+NETNS=${NETNS:-main}
 
 
 #
@@ -35,6 +36,7 @@ DNS_OVER_TCP=${DNS_OVER_TCP:-1}
 #
 # Global variables
 #
+RESOLV_FILE="/run/proxy-ns/$NETNS/resolv.conf"
 RESOLV_CONTENT="nameserver $DNS"
 SOCKS5_SERVER="${SOCKS5_ADDR}:${SOCKS5_PORT}"
 
@@ -55,6 +57,7 @@ function resolv_gen {
     fi
 
     rm -rf $RESOLV_FILE
+    mkdir -p "$(dirname "$RESOLV_FILE")"
     echo "$RESOLV_CONTENT" > $RESOLV_FILE
 }
 

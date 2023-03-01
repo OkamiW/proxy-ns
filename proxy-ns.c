@@ -11,9 +11,10 @@
 #include <sys/mount.h>
 #include <unistd.h>
 
-#define NETNS "/var/run/netns/proxy-ns"
+#define DEFAULT_NETNS_NAME "main"
 
-#define RESOLV_FILE "/tmp/resolv.conf"
+#define NETNS_PATH "/var/run/netns/%s"
+#define RESOLV_PATH "/run/proxy-ns/%s/resolv.conf"
 #define RESOLV_CONF "/etc/resolv.conf"
 
 __attribute__ ((format (printf, 1, 0))) static void
@@ -58,6 +59,9 @@ die_with_error (const char *format, ...)
 int
 main (int argc, char **argv)
 {
+  char *netns_name;
+  char *netns_path;
+  char *resolv_path;
   int netns;
 
   if (argc < 2 || strcmp (argv[1], "--help") == 0)
@@ -70,7 +74,26 @@ main (int argc, char **argv)
   argv++;
   argc--;
 
-  netns = open (NETNS, O_RDONLY | O_CLOEXEC);
+  if (strcmp (argv[0], "-n") == 0 || strcmp (argv[0], "--net") == 0)
+    {
+      netns_name = argv[1];
+      argv += 2;
+      argc -= 2;
+    }
+  else
+    {
+      netns_name = DEFAULT_NETNS_NAME;
+    }
+  if (asprintf (&netns_path, NETNS_PATH, netns_name) == -1)
+    {
+      die ("Failed to asprintf netns_path");
+    }
+  if (asprintf (&resolv_path, RESOLV_PATH, netns_name) == -1)
+    {
+      die ("Failed to asprintf resolv_path");
+    }
+
+  netns = open (netns_path, O_RDONLY | O_CLOEXEC);
   if (netns < 0)
     {
       if (errno != ENOENT)
@@ -94,7 +117,7 @@ main (int argc, char **argv)
       != 0)
     die_with_error ("Failed to make root private");
 
-  if (mount (RESOLV_FILE, RESOLV_CONF, NULL, MS_SILENT | MS_BIND,
+  if (mount (resolv_path, RESOLV_CONF, NULL, MS_SILENT | MS_BIND,
              NULL)
       != 0)
     die_with_error ("Failed to mount bind resolv.conf");

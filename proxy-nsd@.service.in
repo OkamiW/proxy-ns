@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 ExecStart=@PREFIX@/bin/proxy-nsd
-EnvironmentFile=/etc/proxy-nsd.conf
+EnvironmentFile=/etc/proxy-nsd/%i.conf
 
 [Install]
 WantedBy=multi-user.target
