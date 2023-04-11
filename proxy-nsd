@@ -21,6 +21,7 @@ GUEST_ADDR=${GUEST_ADDR:-172.31.0.100/24}
 
 TUN_IF=${TUN_IF:-tun0}
 TUN_IP=${TUN_IP:-10.0.0.1}
+TUN_IP6=${TUN_IP6:-fc00::1}
 TUN_NETMASK=${TUN_NETMASK:-255.255.255.0}
 
 
@@ -91,6 +92,7 @@ function tun_to_socks {
        -s "$(which badvpn-tun2socks)" -- \
        --tundev $TUN_IF \
        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
+       --netif-ip6addr $TUN_IP6 \
        --socks-server-addr $SOCKS5_SERVER --socks5-udp \
        --logger $logger_option
 }
@@ -123,6 +125,9 @@ function up {
     ip netns exec $NETNS ip link set $TUN_IF up
     ip netns exec $NETNS ip addr add $TUN_IP/24 dev $TUN_IF
     ip netns exec $NETNS ip route add default via $TUN_IP dev $TUN_IF
+
+    ip netns exec $NETNS ip -6 addr add $TUN_IP6/7 dev $TUN_IF
+    ip netns exec $NETNS ip -6 route add default dev $TUN_IF
 
     # redirect traffic to lo
     ip netns exec ${NETNS} ip route del local 127.0.0.1 dev lo || true
