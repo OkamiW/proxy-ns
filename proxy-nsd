@@ -32,6 +32,7 @@ SOCKS5_ADDR=${SOCKS5_ADDR:-${HOST_ADDR%%/*}}
 SOCKS5_PORT=${SOCKS5_PORT:-1080}
 DNS=${DNS:-9.9.9.9}
 DNS_OVER_TCP=${DNS_OVER_TCP:-1}
+ROUTE_LOCALNET=${ROUTE_LOCALNET:0}
 
 
 #
@@ -129,10 +130,12 @@ function up {
     ip netns exec $NETNS ip -6 addr add $TUN_IP6/7 dev $TUN_IF
     ip netns exec $NETNS ip -6 route add default dev $TUN_IF
 
-    # redirect traffic to lo
-    ip netns exec ${NETNS} ip route del local 127.0.0.1 dev lo || true
-    ip netns exec ${NETNS} ip route del local 127.0.0.0/8 dev lo || true
-    ip netns exec ${NETNS} sysctl net.ipv4.conf.${TUN_IF}.route_localnet=1 &> /dev/null || true
+    if [[ ${ROUTE_LOCALNET} -eq 1 ]]; then
+        # redirect traffic to lo
+        ip netns exec ${NETNS} ip route del local 127.0.0.1 dev lo || true
+        ip netns exec ${NETNS} ip route del local 127.0.0.0/8 dev lo || true
+        ip netns exec ${NETNS} sysctl net.ipv4.conf.${TUN_IF}.route_localnet=1 &> /dev/null || true
+    fi
 
     wait
 }
