@@ -33,6 +33,7 @@ SOCKS5_PORT=${SOCKS5_PORT:-1080}
 DNS=${DNS:-9.9.9.9}
 DNS_OVER_TCP=${DNS_OVER_TCP:-1}
 ROUTE_LOCALNET=${ROUTE_LOCALNET:0}
+ENABLE_IPV6=${ENABLE_IPV6:-1}
 
 
 #
@@ -80,22 +81,27 @@ function remove_nat {
 }
 
 function tun_to_socks {
-    local logger_option
+    local logger_option tun2socks args
     if [[ -t 1 ]]; then
         logger_option=stdout
     else
         logger_option=syslog
     fi
 
-    setcap cap_net_admin=ep "$(which badvpn-tun2socks)"
-    ip netns exec $NETNS \
-       su nobody \
-       -s "$(which badvpn-tun2socks)" -- \
-       --tundev $TUN_IF \
-       --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK \
-       --netif-ip6addr $TUN_IP6 \
-       --socks-server-addr $SOCKS5_SERVER --socks5-udp \
-       --logger $logger_option
+    tun2socks="$(which badvpn-tun2socks)"
+
+    setcap cap_net_admin=ep "$tun2socks"
+    args=(
+        su nobody -s "$tun2socks" --
+        --tundev $TUN_IF
+        --netif-ipaddr $TUN_IP --netif-netmask $TUN_NETMASK
+        --socks-server-addr $SOCKS5_SERVER --socks5-udp
+        --logger $logger_option
+    )
+    if [[ ${ENABLE_IPV6} -eq 1 ]]; then
+        args+=(--netif-ip6addr $TUN_IP6)
+    fi
+    ip netns exec $NETNS "${args[@]}"
 }
 
 function up {
@@ -127,8 +133,10 @@ function up {
     ip netns exec $NETNS ip addr add $TUN_IP/24 dev $TUN_IF
     ip netns exec $NETNS ip route add default via $TUN_IP dev $TUN_IF
 
-    ip netns exec $NETNS ip -6 addr add $TUN_IP6/7 dev $TUN_IF
-    ip netns exec $NETNS ip -6 route add default dev $TUN_IF
+    if [[ ${ENABLE_IPV6} -eq 1 ]]; then
+        ip netns exec $NETNS ip -6 addr add $TUN_IP6/7 dev $TUN_IF
+        ip netns exec $NETNS ip -6 route add default dev $TUN_IF
+    fi
 
     if [[ ${ROUTE_LOCALNET} -eq 1 ]]; then
         # redirect traffic to lo
