@@ -90,6 +90,11 @@ function tun_to_socks {
 
     tun2socks="$(which badvpn-tun2socks)"
 
+    if [[ -z "$tun2socks" ]]; then
+	    echo "badvpn-tun2socks not found in PATH"
+	    exit 1
+    fi
+
     setcap cap_net_admin=ep "$tun2socks"
     args=(
         su nobody -s "$tun2socks" --
