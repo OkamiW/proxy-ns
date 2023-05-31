@@ -81,18 +81,12 @@ function remove_nat {
 }
 
 function tun_to_socks {
-    local logger_option tun2socks args
+    local tun2socks="$1"
+    local logger_option args
     if [[ -t 1 ]]; then
         logger_option=stdout
     else
         logger_option=syslog
-    fi
-
-    tun2socks="$(which badvpn-tun2socks)"
-
-    if [[ -z "$tun2socks" ]]; then
-	    echo "badvpn-tun2socks not found in PATH"
-	    exit 1
     fi
 
     setcap cap_net_admin=ep "$tun2socks"
@@ -110,6 +104,7 @@ function tun_to_socks {
 }
 
 function up {
+    local tun2socks
     ip netns add $NETNS
 
     ip link add $HOST_VETH type veth peer name $GUEST_VETH
@@ -129,7 +124,8 @@ function up {
         iptables -I INPUT --source ${GUEST_ADDR%%/*}/32 -j ACCEPT
     fi
 
-    tun_to_socks &
+    tun2socks="$(which badvpn-tun2socks)"
+    tun_to_socks "$tun2socks" &
     sleep 0.5
 
     resolv_gen
