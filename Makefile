@@ -1,5 +1,7 @@
 .POSIX:
 
+PREFIX = /usr/local
+
 all: proxy-ns
 
 proxy-ns: proxy-ns.c
