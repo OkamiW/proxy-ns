@@ -80,6 +80,13 @@ function remove_nat {
     iptables -D FORWARD -i ${HOST_VETH} --destination ${SOCKS5_ADDR} -j ACCEPT
 }
 
+function find_badvpn_tun2socks {
+    if ! which badvpn-tun2socks; then
+        echo "badvpn-tun2socks not found"
+        return 1
+    fi
+}
+
 function tun_to_socks {
     local tun2socks="$1"
     local logger_option args
@@ -124,7 +131,7 @@ function up {
         iptables -I INPUT --source ${GUEST_ADDR%%/*}/32 -j ACCEPT
     fi
 
-    tun2socks="$(which badvpn-tun2socks)"
+    tun2socks="$(find_badvpn_tun2socks)"
     tun_to_socks "$tun2socks" &
     sleep 0.5
 
