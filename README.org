@@ -77,8 +77,7 @@ After changing configuration, you need to restart =proxy-nsd=:
 ** Setup
 If you install it through AUR, you only need to:
 #+begin_src sh
-  sudo systemctl enable proxy-nsd@main
-  sudo systemctl start proxy-nsd@main
+  sudo systemctl enable proxy-nsd@main --now
 #+end_src
 
 ** Internal
@@ -91,8 +90,8 @@ namespace.
 
 ** Caveats
 Because =proxy-ns= execute the target program in a separate network
-namespace, the services listening on =127.0.0.1= or =::1= inside =proxy-ns=
-cannot be accessed outside =proxy-ns=.
+namespace, the services listening on =127.0.0.1= or =::1= inside
+=proxy-ns= cannot be accessed outside =proxy-ns=.
 
 (If the service inside =proxy-ns= is listening on =0.0.0.0= or =::=,
 you can access them outside =proxy-ns= by =GUEST_ADDR=.)
@@ -101,3 +100,49 @@ you can access them outside =proxy-ns= by =GUEST_ADDR=.)
 =proxy-ns= though, if your proxy running outside =proxy-ns= supports
 connect to localhost directly for traffic targeted to it.  (traffic to
 loopback will be redirected to the proxy inside =proxy-ns= too.))
+
+** FAQ
+*** Program cannot connect to network in proxy-ns
+Your proxy server is probably listening on =127.0.0.1=, instead of
+=0.0.0.0=, you can verify that by the following command:
+#+begin_src sh
+  ss -tlnp
+#+end_src
+
+If you're using =v2ray=, simply change the =listen= in =inbounds= to
+=0.0.0.0=.
+
+If you're using =clash=, you need to set =allow-lan= to =true=.
+(Turn on =Allow LAN Access= or similar setting if you're using *GUI*
+version of =clash=)
+
+If you don't want to allow devices in lan to access your proxy, you
+can configure your firewall to only allow the addresses matching
+=GUEST_ADDR= to access the port your proxy is listening on.
+
+*** Bash/Zsh function not working with proxy-ns
+Since =proxy-ns= targets *program*, it won't work /out of box/ for
+shell *function*.
+
+In order for /shell function/ to use your proxy, you can start a new
+shell inside =proxy-ns=, and execute your /shell function/ there.
+
+Or you can add the following snippet to your =rc= file, to make it
+more convenient:
+#+begin_src sh
+  # Note:
+  # 1. The following hack only works for shell functions defined in
+  # your rc file, not those defined after the shell is started.
+  # 2. It's only tested on bash and zsh, it may not work with other shells.
+  function proxy-ns {
+      local shell="$(ps -p $$ -oargs=)"
+      if typeset -f "$1" &> /dev/null; then
+	  command proxy-ns "$shell" -i -c "$*"
+      else
+	  command proxy-ns "$@"
+      fi
+  }
+#+end_src
+
+With the snippet above, you can use =proxy-ns= for your shell
+functions the same way for programs.
