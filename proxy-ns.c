@@ -64,13 +64,6 @@ main (int argc, char **argv)
   char *resolv_path;
   int netns;
 
-  if (argc < 2 || strcmp (argv[1], "--help") == 0)
-    {
-      puts ("Usage: proxy-ns [command [argument ...]]");
-      puts ("  More help in README file");
-      exit (0);
-    }
-
   argv++;
   argc--;
 
@@ -84,6 +77,14 @@ main (int argc, char **argv)
     {
       netns_name = DEFAULT_NETNS_NAME;
     }
+
+  if (argc < 1)
+    {
+      puts ("Usage: proxy-ns [-n namespace] [command [argument ...]]");
+      puts ("  More help in README file");
+      exit (0);
+    }
+
   if (asprintf (&netns_path, NETNS_PATH, netns_name) == -1)
     {
       die ("Failed to asprintf netns_path");
