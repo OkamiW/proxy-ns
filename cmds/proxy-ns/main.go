@@ -1,0 +1,434 @@
+package main
+
+import (
+	"encoding/gob"
+	"flag"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"proxy-ns/cmds/proxy-ns/config"
+	"proxy-ns/fakedns"
+	"proxy-ns/proxy"
+	"runtime"
+	"syscall"
+	"unsafe"
+
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
+	"gvisor.dev/gvisor/pkg/rawfile"
+	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
+)
+
+var (
+	IsChild = "PROXY_NS_IS_CHILD"
+)
+
+type Data struct {
+	TunMTU uint32
+	Config *config.Config
+}
+
+func usage() {
+	fmt.Fprintf(os.Stderr, `Usage: %s [options] [command [argument ...]]
+Force any program to use your socks5 proxy server.
+
+Options:
+  -g                         Generate default config file
+  -c config                  Specify config file to use
+`, os.Args[0])
+}
+
+func main() {
+	if os.Getenv(IsChild) != "" {
+		if err := runChild(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	var (
+		defaultCfgDir  string
+		defaultCfgPath string
+	)
+	if value := os.Getenv("XDG_CONFIG_HOME"); value != "" {
+		defaultCfgDir = value
+	} else if value := os.Getenv("HOME"); value != "" {
+		defaultCfgDir = filepath.Join(value, ".config")
+	}
+	if defaultCfgDir != "" {
+		defaultCfgPath = filepath.Join(defaultCfgDir, "proxy-ns", "config.json")
+	}
+
+	cfgPath := flag.String("c", defaultCfgPath, "")
+	genCfg := flag.Bool("g", false, "")
+	flag.CommandLine.Usage = usage
+	flag.Parse()
+
+	if *genCfg {
+		if *cfgPath == "" {
+			fmt.Fprintln(os.Stderr, "Config file not specified")
+			os.Exit(1)
+		}
+		if _, err := os.Stat(*cfgPath); err == nil {
+			fmt.Fprintf(os.Stderr, "Config file already exists: %s\n", *cfgPath)
+			os.Exit(1)
+		}
+		err := config.DefaultConfig.ToFile(*cfgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to generate config file: %s: %s\n", *cfgPath, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Config file generated at %s\n", *cfgPath)
+		os.Exit(0)
+	}
+
+	args := flag.Args()
+	if len(args) == 0 {
+		usage()
+		os.Exit(1)
+	}
+
+	var (
+		cfg *config.Config
+		err error
+	)
+	if *cfgPath == "" {
+		cfg = &config.DefaultConfig
+	} else {
+		cfg, err = config.FromFile(*cfgPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
+	if err := runMain(cfg, args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func dropPrivilege() error {
+	hdr := &unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	data := &unix.CapUserData{}
+	if _, _, e1 := syscall.AllThreadsSyscall6(unix.SYS_CAPSET, uintptr(unsafe.Pointer(hdr)), uintptr(unsafe.Pointer(data)), 0, 0, 0, 0); e1 != 0 {
+		return fmt.Errorf("Failed to capset: %s", e1)
+	}
+
+	if _, _, e1 := syscall.AllThreadsSyscall6(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0, 0); e1 != 0 {
+		return fmt.Errorf("Failed to prctl PR_SET_NO_NEW_PRIVS: %s", e1)
+	}
+	return nil
+}
+
+func runChild() error {
+	err := dropPrivilege()
+	if err != nil {
+		return err
+	}
+
+	var pipeFd, tunFd, pidFd, packetConnFd = 3, 4, 5, 6
+
+	pipeFile := os.NewFile(uintptr(pipeFd), "")
+
+	var data Data
+	err = gob.NewDecoder(pipeFile).Decode(&data)
+	if err != nil {
+		return err
+	}
+	pipeFile.Close()
+	tunMTU := data.TunMTU
+	cfg := data.Config
+
+	var fakeDNSServer *fakedns.Server
+
+	if cfg.FakeDNS {
+		packetConn, err := net.FilePacketConn(os.NewFile(uintptr(packetConnFd), ""))
+		if err != nil {
+			return err
+		}
+		fakeDNSServer = fakedns.NewServer(packetConn, net.JoinHostPort(cfg.DNSServer, "53"), cfg.FakeNetwork)
+		go func() {
+			err := fakeDNSServer.Run()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+		}()
+	}
+
+	err = manageTun(tunMTU, tunFd, proxy.SOCKS5("tcp", cfg.Socks5Address, nil), fakeDNSServer)
+	if err != nil {
+		return err
+	}
+
+	for {
+		_, err = unix.Poll([]unix.PollFd{
+			{
+				Fd:     int32(pidFd),
+				Events: unix.POLLIN,
+			},
+		}, -1)
+		switch err {
+		case unix.EINTR:
+			continue
+		case nil:
+			return nil
+		}
+	}
+}
+
+func getNs(nstype string) (int, error) {
+	return unix.Open(fmt.Sprintf("/proc/%d/task/%d/ns/%s", os.Getpid(), unix.Gettid(), nstype), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+}
+
+func runMain(cfg *config.Config, args []string) error {
+	var (
+		originMntNs, originNetNs int
+		newMntNs, newNetNs       int
+
+		loLink, tunLink netlink.Link
+
+		dnsServer string
+
+		packetConn     net.PacketConn
+		packetConnFile *os.File
+
+		tempFile, nullFile *os.File
+
+		wd string
+
+		tunFd, pidFd int
+		tunMTU       uint32
+
+		r, w *os.File
+
+		execName, progName string
+
+		err error
+	)
+	runtime.LockOSThread()
+	originMntNs, err = getNs("mnt")
+	if err != nil {
+		return err
+	}
+	originNetNs, err = getNs("net")
+	if err != nil {
+		return err
+	}
+
+	err = unix.Unshare(unix.CLONE_NEWNS)
+	if err != nil {
+		return err
+	}
+	newMntNs, err = getNs("mnt")
+	if err != nil {
+		return err
+	}
+	err = unix.Mount("none", "/", "", unix.MS_REC|unix.MS_PRIVATE, "")
+	if err != nil {
+		return err
+	}
+
+	err = unix.Mount("tmpfs", os.TempDir(), "tmpfs", 0, "")
+	if err != nil {
+		return err
+	}
+
+	tempFile, err = os.CreateTemp("", "resolv.conf.*")
+	if err != nil {
+		return err
+	}
+
+	dnsServer = cfg.DNSServer
+	if cfg.FakeDNS {
+		dnsServer = "127.0.0.1"
+	}
+	_, err = tempFile.WriteString(fmt.Sprintf("nameserver %s\n", dnsServer))
+	if err != nil {
+		return err
+	}
+	err = tempFile.Close()
+	if err != nil {
+		return err
+	}
+	err = os.Chmod(tempFile.Name(), 0644)
+	if err != nil {
+		return err
+	}
+	err = os.Chown(tempFile.Name(), 0, 0)
+	if err != nil {
+		return err
+	}
+
+	err = unix.Mount(tempFile.Name(), "/etc/resolv.conf", "", unix.MS_BIND, "")
+	if err != nil {
+		return err
+	}
+
+	err = syscall.Unmount(os.TempDir(), 0)
+	if err != nil {
+		return err
+	}
+
+	err = unix.Unshare(unix.CLONE_NEWNET)
+	if err != nil {
+		return err
+	}
+	newNetNs, err = getNs("net")
+	if err != nil {
+		return err
+	}
+	loLink, err = netlink.LinkByName("lo")
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetUp(loLink)
+	if err != nil {
+		return err
+	}
+
+	if cfg.FakeDNS {
+		packetConn, err = net.ListenPacket("udp", net.JoinHostPort(dnsServer, "53"))
+		if err != nil {
+			return err
+		}
+		packetConnFile, err = packetConn.(*net.UDPConn).File()
+		if err != nil {
+			return err
+		}
+	}
+
+	err = netlink.LinkAdd(&netlink.Tuntap{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: cfg.TunName,
+		},
+		Mode: netlink.TUNTAP_MODE_TUN,
+	})
+	if err != nil {
+		return err
+	}
+	tunLink, err = netlink.LinkByName(cfg.TunName)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetUp(tunLink)
+	if err != nil {
+		return err
+	}
+	err = netlink.AddrAdd(tunLink, &netlink.Addr{
+		IPNet: &net.IPNet{
+			IP:   cfg.TunIP,
+			Mask: cfg.TunMask,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst:       &net.IPNet{},
+		Gw:        cfg.TunIP,
+		LinkIndex: tunLink.Attrs().Index,
+	})
+	if err != nil {
+		return err
+	}
+
+	tunMTU, err = rawfile.GetMTU(cfg.TunName)
+	if err != nil {
+		return err
+	}
+
+	tunFd, err = tun.Open(cfg.TunName)
+	if err != nil {
+		return err
+	}
+	unix.CloseOnExec(tunFd)
+
+	pidFd, err = unix.PidfdOpen(os.Getpid(), 0)
+	if err != nil {
+		return err
+	}
+
+	wd, err = os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	err = unix.Setns(originNetNs, unix.CLONE_NEWNET)
+	if err != nil {
+		return err
+	}
+	err = unix.Setns(originMntNs, unix.CLONE_NEWNS)
+	if err != nil {
+		return err
+	}
+
+	execName, err = os.Executable()
+	if err != nil {
+		return err
+	}
+	nullFile, err = os.Open(os.DevNull)
+	if err != nil {
+		return err
+	}
+	if !cfg.FakeDNS {
+		packetConnFile = nullFile
+	}
+	r, w, err = os.Pipe()
+	if err != nil {
+		return err
+	}
+	_, err = os.StartProcess(execName, os.Args, &os.ProcAttr{
+		Dir: "/",
+		Env: append(os.Environ(), fmt.Sprintf("%s=1", IsChild)),
+		Files: []*os.File{
+			nullFile, nullFile, os.Stderr, r,
+			os.NewFile(uintptr(tunFd), ""),
+			os.NewFile(uintptr(pidFd), ""),
+			packetConnFile,
+		},
+		Sys: &syscall.SysProcAttr{
+			Setsid: true,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	err = gob.NewEncoder(w).Encode(&Data{
+		TunMTU: tunMTU,
+		Config: cfg,
+	})
+	if err != nil {
+		return err
+	}
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+
+	err = unix.Setns(newNetNs, unix.CLONE_NEWNET)
+	if err != nil {
+		return err
+	}
+	err = unix.Setns(newMntNs, unix.CLONE_NEWNS)
+	if err != nil {
+		return err
+	}
+
+	// Switching mount namespace using setns(2) would change working directory to /
+	err = os.Chdir(wd)
+	if err != nil {
+		return err
+	}
+
+	// In case there is no zombie reaper, explicitly ignore SIGCHLD to avoid zombie
+	signal.Ignore(unix.SIGCHLD)
+	progName, err = exec.LookPath(args[0])
+	if err != nil {
+		return err
+	}
+	return unix.Exec(progName, args, os.Environ())
+}

@@ -1,148 +1,68 @@
 * proxy-ns
-[[https://github.com/OkamiW/proxy-ns][proxy-ns]] is a lightweight(about 100 lines of code) tool to redirect
-any programs' traffic to your local socks5 server.
-
-Unlike =proxychains= (which uses =LD_PRELOAD= hack), it sets up a
-vpn(using =tun2socks=) within a specific linux network namespace, and
-execute the target program there.
+proxy-ns is a Linux-specific command line tool to force any program to
+use your socks5 proxy server.
 
 ** Features
 It has several advantages over =proxychains=:
-- UDP support
+- Supports both TCP and UDP
 - Works for statically linked programs
 
 ** Installation
 *** Arch Linux
 proxy-ns is available at [[https://aur.archlinux.org/packages/proxy-ns][AUR]].
+*** Other
+You can manually clone this repo, then use =make install=.
+#+begin_src sh
+  git clone https://github.com/OkamiW/proxy-ns.git
+  cd proxy-ns
+  make && sudo make install
+#+end_src
 
 ** Configuration
-If you install it through AUR, the config file should be at
-=/etc/proxy-nsd.conf=.
-
-You may need to change =SOCKS5_ADDR= and =SOCKS5_PORT=.
-(And if your proxy supports UDP, turn off =DNS_OVER_TCP= to improve performance).
-#+begin_src conf
-  # Name of your Network Namespace
-  NETNS=main
-
-  # Name of your Veth Interface
-  HOST_VETH=veth0
-  # Address of your Veth Interface
-  HOST_ADDR=172.31.0.1/24
-
-  # Name of your Ceth Interface
-  GUEST_VETH=ceth0
-  # Address of your Ceth Interface
-  GUEST_ADDR=172.31.0.100/24
-
-  # Address of your socks5 server.
-
-  # Beware of that, because the program ran by proxy-ns is
-  # in different network namespace, they don't share the same loopback.
-  # Thereby, you should probably never set SOCKS5_ADDR to 127.0.0.1
-
-  # So if you're running a socks5 server locally,
-  # it must be listening on "HOST_ADDR" (or simply "0.0.0.0"),
-  # and your firewall must allow all traffic from "GUEST_ADDR" to it.
-  # SOCKS5_ADDR here would need to be set to the same as HOST_ADDR.
-
-  SOCKS5_ADDR=172.31.0.1
-
-  # Port of your socks5 server.
-  SOCKS5_PORT=1080
-
-  # DNS server used to resolve domain.
-  # If you enable DNS_OVER_TCP, make sure the DNS server
-  # set here supports TCP on 53 port
-  DNS=9.9.9.9
-
-  # Since many socks5 servers doesn't support UDP,
-  # DNS_OVER_TCP workaround is enabled by default.
-  DNS_OVER_TCP=1
-
-  # Experimental feature:
-  # Enable this would redirect traffic to 127.0.0.1/8 to the proxy server too(in proxy-ns).
-  # But programs in proxy-ns won't be able to listen on 127.0.0.1/8
-  ROUTE_LOCALNET=0
-
-  # Redirect IPv6 traffic to proxy server.
-  ENABLE_IPV6=0
+First, generate your config file:
+#+begin_src sh
+  proxy-ns -g
 #+end_src
 
-After changing configuration, you need to restart =proxy-nsd=:
-#+begin_src sh
-  sudo systemctl restart proxy-nsd@main
-#+end_src
+By default, proxy-ns uses config file at
+=$XDG_CONFIG_HOME/proxy-ns/config.json=. In case =XDG_CONFIG_HOME= is
+not set, it would be =$HOME/.config/proxy-ns/config.json=.
 
-** Setup
-If you install it through AUR, you only need to:
-#+begin_src sh
-  sudo systemctl enable proxy-nsd@main --now
-#+end_src
-
-** Internal
-=proxy-nsd= would create a separate network namespace, and set up VPN
-there(with =badvpn-tun2socks=, redirecting VPN traffic to your socks5
-server).
-
-=proxy-ns= execute your target program in the previous created network
-namespace.
-
-** Caveats
-Because =proxy-ns= execute the target program in a separate network
-namespace, the services listening on =127.0.0.1= or =::1= inside
-=proxy-ns= cannot be accessed outside =proxy-ns=.
-
-(If the service inside =proxy-ns= is listening on =0.0.0.0= or =::=,
-you can access them outside =proxy-ns= by =GUEST_ADDR=.)
-
-(It's possible to access services listening outside =proxy-ns= inside
-=proxy-ns= though, if your proxy running outside =proxy-ns= supports
-connect to localhost directly for traffic targeted to it.  (traffic to
-loopback will be redirected to the proxy inside =proxy-ns= too.))
-
-** FAQ
-*** Program cannot connect to network in proxy-ns
-Your proxy server is probably listening on =127.0.0.1=, instead of
-=0.0.0.0=, you can verify that by the following command:
-#+begin_src sh
-  ss -tlnp
-#+end_src
-
-If you're using =v2ray=, simply change the =listen= in =inbounds= to
-=0.0.0.0=.
-
-If you're using =clash=, you need to set =allow-lan= to =true=.
-(Turn on =Allow LAN Access= or similar setting if you're using *GUI*
-version of =clash=)
-
-If you don't want to allow devices in lan to access your proxy, you
-can configure your firewall to only allow the addresses matching
-=GUEST_ADDR= to access the port your proxy is listening on.
-
-*** Bash/Zsh function not working with proxy-ns
-Since =proxy-ns= targets *program*, it won't work /out of box/ for
-shell *function*.
-
-In order for /shell function/ to use your proxy, you can start a new
-shell inside =proxy-ns=, and execute your /shell function/ there.
-
-Or you can add the following snippet to your =rc= file, to make it
-more convenient:
-#+begin_src sh
-  # Note:
-  # 1. The following hack only works for shell functions defined in
-  # your rc file, not those defined after the shell is started.
-  # 2. It's only tested on bash and zsh, it may not work with other shells.
-  function proxy-ns {
-      local shell="$(ps -p $$ -oargs=)"
-      if typeset -f "$1" &> /dev/null; then
-	  command proxy-ns "$shell" -i -c "$*"
-      else
-	  command proxy-ns "$@"
-      fi
+Here's the default config file:
+#+begin_src js-json
+  {
+    "tun_name": "tun0",
+    "tun_ip": "10.0.0.1/24",
+    "socks5_address": "127.0.0.1:1080",
+    "fake_dns": true,
+    "fake_network": "240.0.0.0/4",
+    "dns_server": "9.9.9.9"
   }
 #+end_src
+Normally you only need to change =socks5_address=.
 
-With the snippet above, you can use =proxy-ns= for your shell
-functions the same way for programs.
+** Notes about FakeDNS
+FakeDNS can avoid a separate DNS roundtrip to improve latency, but it
+has its own limitation:
+- All domains are resolved to =fake_network=, some program may not
+  work as expected(eg. =geoiplookup=).
+- Some programs may not use your system DNS resolver. FakeDNS won't
+  work for them.
+
+** FAQ
+*** Why can't I ping as normal user inside proxy-ns?
+Because proxy-ns creates a new network namespace.
+
+For many distributions, =/proc/sys/net/ipv4/ping_group_range= defaults
+to =1 0= in new network namespace, which disallow ping for all groups.
+
+Since socks5 doesn't support icmp, =ping= would be meaningless inside
+proxy-ns anyway.
+*** My program cannot resolve domain
+Your socks5 server may not support /UDP ASSOCIATE/.
+
+Usually, you can workaround this by enabling =fake_dns= (it's enabled
+by default).
+
+But some programs resolve domains themselves. You have to enable UDP
+support for your proxy server to use them.

@@ -1,42 +1,16 @@
-.POSIX:
-
 PREFIX = /usr/local
 
-all: proxy-ns
+GO_DIR     = .
+GO_SOURCES = $(shell find $(GO_DIR) -name '*.go') $(GO_DIR)/go.mod $(GO_DIR)/go.sum
 
-proxy-ns: proxy-ns.c
+cmds/proxy-ns/proxy-ns: $(GO_SOURCES) Makefile
+	CGO_ENABLED=0 go build -C cmds/proxy-ns -ldflags '-s -w -buildid=' -buildvcs=false -trimpath -o proxy-ns
 
 clean:
-	rm -f proxy-ns proxy-nsd@.service
+	rm -f cmds/proxy-ns/proxy-ns
 
-proxy-nsd@.service: proxy-nsd@.service.in
-	sed 's|@PREFIX@|$(PREFIX)|' $< > $@ || rm $@
+install: cmds/proxy-ns/proxy-ns
+	install -Dm 755 cmds/proxy-ns/proxy-ns $(DESTDIR)$(PREFIX)/bin/proxy-ns
+	setcap cap_net_bind_service,cap_fowner,cap_chown,cap_sys_chroot,cap_sys_admin,cap_net_admin=ep $(DESTDIR)$(PREFIX)/bin/proxy-ns
 
-install: proxy-ns proxy-nsd@.service
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	install -m 755 proxy-ns $(DESTDIR)$(PREFIX)/bin/
-	setcap cap_sys_admin=ep $(DESTDIR)$(PREFIX)/bin/proxy-ns
-
-	install -m 755 proxy-nsd $(DESTDIR)$(PREFIX)/bin/
-
-	mkdir -p $(DESTDIR)$(PREFIX)/lib/systemd/system
-	install -m 644 proxy-nsd@.service $(DESTDIR)$(PREFIX)/lib/systemd/system/
-
-	mkdir -p $(DESTDIR)/etc/proxy-nsd
-	install -m 644 main.conf $(DESTDIR)/etc/proxy-nsd/
-
-	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/proxy-ns
-	install -m 644 README.org $(DESTDIR)$(PREFIX)/share/doc/proxy-ns/
-
-uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/proxy-ns
-	rm -f $(DESTDIR)$(PREFIX)/bin/proxy-nsd
-
-	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/system/proxy-nsd@.service
-
-	rm -rf $(DESTDIR)/etc/proxy-nsd
-
-	rm -rf $(DESTDIR)$(PREFIX)/share/doc/proxy-ns
-
-
-.PHONY: all clean install uninstall
+.PHONY: GOTOUCH install clean
