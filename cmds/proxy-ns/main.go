@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"proxy-ns/cmds/proxy-ns/config"
 	"proxy-ns/fakedns"
@@ -424,8 +423,6 @@ func runMain(cfg *config.Config, args []string) error {
 		return err
 	}
 
-	// In case there is no zombie reaper, explicitly ignore SIGCHLD to avoid zombie
-	signal.Ignore(unix.SIGCHLD)
 	progName, err = exec.LookPath(args[0])
 	if err != nil {
 		return err
