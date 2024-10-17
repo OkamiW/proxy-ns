@@ -37,7 +37,24 @@ Force any program to use your socks5 proxy server.
 Options:
   -g                         Generate default config file
   -c config                  Specify config file to use
+
+These options override settings in config file:
+  --tun-name=<TUN_NAME>              Set tun device name
+  --tun-ip=<TUN_IP>                  Set tun device ip
+  --socks5-address=<SOCKS5_ADDRESS>  Use the specified proxy
+  --fake-dns=<BOOL>                  Enable/Disable fake DNS
+  --fake-network=<NETWORK>           Set network used for fake DNS
+  --dns-server=<DNS_SERVER>          Set DNS server(only available when fake DNS is disabled)
 `, os.Args[0])
+}
+
+func isFlagPresent(name string) (present bool) {
+	flag.Visit(func (f *flag.Flag) {
+		if f.Name == name {
+			present = true
+		}
+	})
+	return
 }
 
 func main() {
@@ -63,6 +80,12 @@ func main() {
 
 	cfgPath := flag.String("c", defaultCfgPath, "")
 	genCfg := flag.Bool("g", false, "")
+	tunName := flag.String("tun-name", "", "")
+	tunIp := flag.String("tun-ip", "", "")
+	socks5Address := flag.String("socks5-address", "", "")
+	fakeDns := flag.Bool("fake-dns", true, "")
+	fakeNetwork := flag.String("fake-network", "", "")
+	dnsServer := flag.String("dns-server", "", "")
 	flag.CommandLine.Usage = usage
 	flag.Parse()
 
@@ -102,6 +125,31 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	}
+
+	var data config.Data
+	if isFlagPresent("tun-name") {
+		data.TunName = tunName
+	}
+	if isFlagPresent("tun-ip") {
+		data.TunIP = tunIp
+	}
+	if isFlagPresent("socks5-address") {
+		data.Socks5Address = socks5Address
+	}
+	if isFlagPresent("fake-dns") {
+		data.FakeDNS = fakeDns
+	}
+	if isFlagPresent("fake-network") {
+		data.FakeNetwork = fakeNetwork
+	}
+	if isFlagPresent("dns-server") {
+		data.DNSServer = dnsServer
+	}
+	err = cfg.Update(data)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	if err := runMain(cfg, args); err != nil {
