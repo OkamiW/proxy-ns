@@ -49,7 +49,7 @@ These options override settings in config file:
 }
 
 func isFlagPresent(name string) (present bool) {
-	flag.Visit(func (f *flag.Flag) {
+	flag.Visit(func(f *flag.Flag) {
 		if f.Name == name {
 			present = true
 		}
