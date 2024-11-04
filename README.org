@@ -43,8 +43,8 @@ Normally you only need to change =socks5_address=.
 
 ** Notes about FakeDNS
 FakeDNS can avoid a separate DNS roundtrip to improve latency, but it
-has its own limitation:
-- All domains are resolved to =fake_network=, some program may not
+has its own limitations:
+- All domains are resolved to =fake_network=, some programs may not
   work as expected(eg. =geoiplookup=).
 - Some programs may not use your system DNS resolver. FakeDNS won't
   work for them.
