@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"proxy-ns/cmds/proxy-ns/config"
+	"proxy-ns/cmd/proxy-ns/config"
 	"proxy-ns/fakedns"
 	"proxy-ns/proxy"
 	"runtime"
