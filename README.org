@@ -1,5 +1,5 @@
 * proxy-ns
-proxy-ns is a Linux-specific command line tool to force any program to
+proxy-ns is a Linux-specific command-line tool to force any program to
 use your socks5 proxy server.
 
 ** Features
@@ -11,7 +11,7 @@ It has several advantages over =proxychains=:
 *** Arch Linux
 proxy-ns is available at [[https://aur.archlinux.org/packages/proxy-ns][AUR]].
 *** Other
-You can manually clone this repo, then use =make install=.
+You can manually clone this repository, then use =make install=.
 #+begin_src sh
   git clone https://github.com/OkamiW/proxy-ns.git
   cd proxy-ns
@@ -19,16 +19,16 @@ You can manually clone this repo, then use =make install=.
 #+end_src
 
 ** Configuration
-First, generate your config file:
+First, generate your configuration file:
 #+begin_src sh
   proxy-ns -g
 #+end_src
 
-By default, proxy-ns uses config file at
+By default, proxy-ns uses the configuration file at
 =$XDG_CONFIG_HOME/proxy-ns/config.json=. In case =XDG_CONFIG_HOME= is
 not set, it would be =$HOME/.config/proxy-ns/config.json=.
 
-Here's the default config file:
+Here's the default configuration file:
 #+begin_src js-json
   {
     "tun_name": "tun0",
@@ -39,29 +39,29 @@ Here's the default config file:
     "dns_server": "9.9.9.9"
   }
 #+end_src
-Normally you only need to change =socks5_address=.
+Normally, you only need to change =socks5_address=.
 
 ** Notes about FakeDNS
 FakeDNS can avoid a separate DNS roundtrip to improve latency, but it
 has its own limitations:
 - All domains are resolved to =fake_network=, some programs may not
-  work as expected(eg. =geoiplookup=).
+  work as expected(e.g. =geoiplookup=).
 - Some programs may not use your system DNS resolver. FakeDNS won't
   work for them.
 
 ** FAQ
-*** Why can't I ping as normal user inside proxy-ns?
+*** Why can't I ping as a normal user inside proxy-ns?
 Because proxy-ns creates a new network namespace.
 
 For many distributions, =/proc/sys/net/ipv4/ping_group_range= defaults
-to =1 0= in new network namespace, which disallow ping for all groups.
+to =1 0= in a new network namespace, which disallows ping for all groups.
 
-Since socks5 doesn't support icmp, =ping= would be meaningless inside
-proxy-ns anyway.
-*** My program cannot resolve domain
+Since socks5 doesn't support ICMP, it would be pointless to =ping=
+inside proxy-ns anyway.
+*** My program cannot resolve any domain
 Your socks5 server may not support /UDP ASSOCIATE/.
 
-Usually, you can workaround this by enabling =fake_dns= (it's enabled
+Usually, you can work around this by enabling =fake_dns= (it's enabled
 by default).
 
 But some programs resolve domains themselves. You have to enable UDP
