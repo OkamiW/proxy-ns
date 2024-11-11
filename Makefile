@@ -7,7 +7,7 @@ GO_DIR     = .
 GO_SOURCES = $(shell find $(GO_DIR) -name '*.go') $(GO_DIR)/go.mod $(GO_DIR)/go.sum
 
 proxy-ns: $(GO_SOURCES) Makefile
-	CGO_ENABLED=0 go build -ldflags '-s -w -buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o proxy-ns ./cmd/proxy-ns
+	CGO_ENABLED=0 go build -ldflags '-s -w -buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o proxy-ns
 
 install: proxy-ns
 	install -Dm 755 proxy-ns $(DESTDIR)$(bindir)/proxy-ns
