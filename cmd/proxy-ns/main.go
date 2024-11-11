@@ -12,6 +12,7 @@ import (
 	"proxy-ns/fakedns"
 	"proxy-ns/proxy"
 	"runtime"
+	"slices"
 	"syscall"
 	"unsafe"
 
@@ -19,10 +20,6 @@ import (
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
-)
-
-var (
-	IsChild = "PROXY_NS_IS_CHILD"
 )
 
 type Data struct {
@@ -58,13 +55,6 @@ func isFlagPresent(name string) (present bool) {
 }
 
 func main() {
-	if os.Getenv(IsChild) != "" {
-		if err := runChild(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
-	}
 	var (
 		defaultCfgDir  string
 		defaultCfgPath string
@@ -86,8 +76,17 @@ func main() {
 	fakeDns := flag.Bool("fake-dns", true, "")
 	fakeNetwork := flag.String("fake-network", "", "")
 	dnsServer := flag.String("dns-server", "", "")
+	daemon := flag.Bool("daemon", false, "")
 	flag.CommandLine.Usage = usage
 	flag.Parse()
+
+	if *daemon {
+		if err := runDaemon(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *genCfg {
 		if *cfgPath == "" {
@@ -171,7 +170,7 @@ func dropPrivilege() error {
 	return nil
 }
 
-func runChild() error {
+func runDaemon() error {
 	err := dropPrivilege()
 	if err != nil {
 		return err
@@ -428,9 +427,9 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+	os.Args = slices.Insert(os.Args, 1, "--daemon")
 	_, err = os.StartProcess(execName, os.Args, &os.ProcAttr{
 		Dir: "/",
-		Env: append(os.Environ(), fmt.Sprintf("%s=1", IsChild)),
 		Files: []*os.File{
 			nullFile, nullFile, os.Stderr, r,
 			os.NewFile(uintptr(tunFd), ""),
