@@ -16,8 +16,8 @@ You can manually clone this repository, then use =make install=.
   git clone https://github.com/OkamiW/proxy-ns.git
   cd proxy-ns
   make
-  make install
-  make install-config # optional
+  sudo make install
+  sudo make install-config # optional
 #+end_src
 
 ** Notes about FakeDNS
