@@ -1,0 +1,8 @@
+{
+  "tun_name": "tun0",
+  "tun_ip": "10.0.0.1/24",
+  "socks5_address": "127.0.0.1:1080",
+  "fake_dns": true,
+  "fake_network": "240.0.0.0/4",
+  "dns_server": "9.9.9.9"
+}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 )
 
 var DefaultConfig = Config{
@@ -88,41 +87,9 @@ func (cfg *Config) Update(data Data) error {
 	return nil
 }
 
-func (c *Config) ToFile(path string) error {
-	var data Data
-
-	data.TunName = &c.TunName
-	ipNet := net.IPNet{
-		IP:   c.TunIP,
-		Mask: c.TunMask,
-	}
-	ipNetStr := ipNet.String()
-	data.TunIP = &ipNetStr
-	data.Socks5Address = &c.Socks5Address
-	data.FakeDNS = &c.FakeDNS
-	fakeNetworkStr := c.FakeNetwork.String()
-	data.FakeNetwork = &fakeNetworkStr
-	data.DNSServer = &c.DNSServer
-
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	encoder := json.NewEncoder(f)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(&data); err != nil {
-		return fmt.Errorf("Failed to encode json: %w", err)
-	}
-	return nil
-}
-
 func FromFile(path string) (*Config, error) {
 	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("Config file not found. You should use `proxy-ns -g` to generate your config file first")
+		return nil, fmt.Errorf("Config file not found")
 	}
 
 	var cfg Config = DefaultConfig

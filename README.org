@@ -15,31 +15,10 @@ You can manually clone this repository, then use =make install=.
 #+begin_src sh
   git clone https://github.com/OkamiW/proxy-ns.git
   cd proxy-ns
-  make && sudo make install
+  make
+  make install
+  make install-config # optional
 #+end_src
-
-** Configuration
-First, generate your configuration file:
-#+begin_src sh
-  proxy-ns -g
-#+end_src
-
-By default, =proxy-ns= uses the configuration file at
-=$XDG_CONFIG_HOME/proxy-ns/config.json=. In case =XDG_CONFIG_HOME= is
-not set, it would be =$HOME/.config/proxy-ns/config.json=.
-
-Here's the default configuration file:
-#+begin_src js-json
-  {
-    "tun_name": "tun0",
-    "tun_ip": "10.0.0.1/24",
-    "socks5_address": "127.0.0.1:1080",
-    "fake_dns": true,
-    "fake_network": "240.0.0.0/4",
-    "dns_server": "9.9.9.9"
-  }
-#+end_src
-Normally, you only need to change =socks5_address=.
 
 ** Notes about FakeDNS
 FakeDNS can be used to avoid a separate DNS roundtrip, thus improving

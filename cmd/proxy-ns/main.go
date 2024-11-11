@@ -22,6 +22,11 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
 )
 
+var (
+	SysConfDir = "/etc"
+	ConfigPath = filepath.Join(SysConfDir, "proxy-ns/config.json")
+)
+
 type Data struct {
 	TunMTU uint32
 	Config *config.Config
@@ -32,8 +37,7 @@ func usage() {
 Force any program to use your socks5 proxy server.
 
 Options:
-  -g                         Generate default config file
-  -c config                  Specify config file to use
+  -c config                  Specify config file to use (Default: %s)
 
 These options override settings in config file:
   --tun-name=<TUN_NAME>              Set tun device name
@@ -42,7 +46,7 @@ These options override settings in config file:
   --fake-dns=<BOOL>                  Enable/Disable fake DNS
   --fake-network=<NETWORK>           Set network used for fake DNS
   --dns-server=<DNS_SERVER>          Set DNS server(only available when fake DNS is disabled)
-`, os.Args[0])
+`, os.Args[0], ConfigPath)
 }
 
 func isFlagPresent(name string) (present bool) {
@@ -55,21 +59,7 @@ func isFlagPresent(name string) (present bool) {
 }
 
 func main() {
-	var (
-		defaultCfgDir  string
-		defaultCfgPath string
-	)
-	if value := os.Getenv("XDG_CONFIG_HOME"); value != "" {
-		defaultCfgDir = value
-	} else if value := os.Getenv("HOME"); value != "" {
-		defaultCfgDir = filepath.Join(value, ".config")
-	}
-	if defaultCfgDir != "" {
-		defaultCfgPath = filepath.Join(defaultCfgDir, "proxy-ns", "config.json")
-	}
-
-	cfgPath := flag.String("c", defaultCfgPath, "")
-	genCfg := flag.Bool("g", false, "")
+	cfgPath := flag.String("c", ConfigPath, "")
 	tunName := flag.String("tun-name", "", "")
 	tunIp := flag.String("tun-ip", "", "")
 	socks5Address := flag.String("socks5-address", "", "")
@@ -88,24 +78,6 @@ func main() {
 		return
 	}
 
-	if *genCfg {
-		if *cfgPath == "" {
-			fmt.Fprintln(os.Stderr, "Config file not specified")
-			os.Exit(1)
-		}
-		if _, err := os.Stat(*cfgPath); err == nil {
-			fmt.Fprintf(os.Stderr, "Config file already exists: %s\n", *cfgPath)
-			os.Exit(1)
-		}
-		err := config.DefaultConfig.ToFile(*cfgPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to generate config file: %s: %s\n", *cfgPath, err)
-			os.Exit(1)
-		}
-		fmt.Fprintf(os.Stderr, "Config file generated at %s\n", *cfgPath)
-		os.Exit(0)
-	}
-
 	args := flag.Args()
 	if len(args) == 0 {
 		usage()
@@ -116,14 +88,10 @@ func main() {
 		cfg *config.Config
 		err error
 	)
-	if *cfgPath == "" {
-		cfg = &config.DefaultConfig
-	} else {
-		cfg, err = config.FromFile(*cfgPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
+	cfg, err = config.FromFile(*cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	var data config.Data
