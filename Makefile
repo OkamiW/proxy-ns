@@ -19,4 +19,4 @@ install-config:
 clean:
 	rm -f proxy-ns
 
-.PHONY: GOTOUCH install clean
+.PHONY: install install-config clean
