@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"proxy-ns/proxy/transport/socks5"
 	"strconv"
+
+	"proxy-ns/proxy/transport/socks5"
 )
 
 type socks5Dialer struct {
@@ -135,7 +136,7 @@ type socks5UDPConn struct {
 }
 
 func (c *socks5UDPConn) Read(b []byte) (n int, err error) {
-	var buf = make([]byte, 65535)
+	buf := make([]byte, 65535)
 	n, err = c.Conn.Read(buf)
 	if err != nil {
 		return

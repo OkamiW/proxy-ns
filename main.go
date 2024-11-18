@@ -8,13 +8,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"proxy-ns/config"
-	"proxy-ns/fakedns"
-	"proxy-ns/proxy"
 	"runtime"
 	"slices"
 	"syscall"
 	"unsafe"
+
+	"proxy-ns/config"
+	"proxy-ns/fakedns"
+	"proxy-ns/proxy"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -144,7 +145,7 @@ func runDaemon() error {
 		return err
 	}
 
-	var pipeFd, tunFd, pidFd, packetConnFd = 3, 4, 5, 6
+	pipeFd, tunFd, pidFd, packetConnFd := 3, 4, 5, 6
 
 	pipeFile := os.NewFile(uintptr(pipeFd), "")
 
@@ -268,7 +269,7 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	err = os.Chmod(tempFile.Name(), 0644)
+	err = os.Chmod(tempFile.Name(), 0o644)
 	if err != nil {
 		return err
 	}

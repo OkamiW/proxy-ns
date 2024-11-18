@@ -6,11 +6,12 @@ import (
 	"io"
 	"net"
 	"os"
-	"proxy-ns/fakedns"
-	"proxy-ns/proxy"
 	"strconv"
 	"sync"
 	"time"
+
+	"proxy-ns/fakedns"
+	"proxy-ns/proxy"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
