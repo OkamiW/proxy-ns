@@ -46,3 +46,12 @@ by default).
 However, some programs resolve domains themselves. You will need to
 enable UDP support on your proxy server for these programs to function
 properly.
+*** =proxy-ns= doesn't work for forking programs
+This is a known issue. As =proxy-ns= daemon exits as the program
+exits.
+
+If you start the forking program in shell, you can work around this
+problem by executing the shell in =proxy-ns= beforehand:
+#+begin_src sh
+  exec proxy-ns $SHELL
+#+end_src
