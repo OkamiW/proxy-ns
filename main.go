@@ -38,6 +38,7 @@ func usage() {
 Force any program to use your socks5 proxy server.
 
 Options:
+  -q                         Quiet mode
   -c config                  Specify config file to use (Default: %s)
 
 These options override settings in config file:
@@ -60,6 +61,7 @@ func isFlagPresent(name string) (present bool) {
 }
 
 func main() {
+	quietMode := flag.Bool("q", false, "")
 	cfgPath := flag.String("c", ConfigPath, "")
 	tunName := flag.String("tun-name", "", "")
 	tunIp := flag.String("tun-ip", "", "")
@@ -70,6 +72,17 @@ func main() {
 	daemon := flag.Bool("daemon", false, "")
 	flag.CommandLine.Usage = usage
 	flag.Parse()
+
+	if *quietMode {
+		devNull, err := os.Open("/dev/null")
+		if err != nil {
+			os.Exit(1)
+		}
+		err = syscall.Dup2(int(devNull.Fd()), 2)
+		if err != nil {
+			os.Exit(1)
+		}
+	}
 
 	if *daemon {
 		if err := runDaemon(); err != nil {
