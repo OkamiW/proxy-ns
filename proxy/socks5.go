@@ -16,11 +16,21 @@ type socks5Dialer struct {
 	auth    *socks5.Auth
 }
 
-func SOCKS5(network, address string, auth *socks5.Auth) Dialer {
+func SOCKS5(network, address, username, password string) Dialer {
+	if username != "" && password != "" {
+		return &socks5Dialer{
+			network: network,
+			address: address,
+			auth:    &socks5.Auth{
+				Username: username,
+				Password: password,
+			},
+		}
+	}
 	return &socks5Dialer{
 		network: network,
 		address: address,
-		auth:    auth,
+		auth:    nil,
 	}
 }
 

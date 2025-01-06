@@ -45,6 +45,8 @@ These options override settings in config file:
   --tun-name=<TUN_NAME>              Set tun device name
   --tun-ip=<TUN_IP>                  Set tun device ip
   --socks5-address=<SOCKS5_ADDRESS>  Use the specified proxy
+  --username=<SOCKS5_USER>           Username of the specified proxy (optional)
+  --password=<SOCKS5_PASS>           Password of the specified proxy (optional)
   --fake-dns=<BOOL>                  Enable/Disable fake DNS
   --fake-network=<NETWORK>           Set network used for fake DNS
   --dns-server=<DNS_SERVER>          Set DNS server(only available when fake DNS is disabled)
@@ -66,6 +68,8 @@ func main() {
 	tunName := flag.String("tun-name", "", "")
 	tunIp := flag.String("tun-ip", "", "")
 	socks5Address := flag.String("socks5-address", "", "")
+	username := flag.String("username", "", "")
+	password := flag.String("password", "", "")
 	fakeDns := flag.Bool("fake-dns", true, "")
 	fakeNetwork := flag.String("fake-network", "", "")
 	dnsServer := flag.String("dns-server", "", "")
@@ -117,6 +121,12 @@ func main() {
 	}
 	if isFlagPresent("socks5-address") {
 		data.Socks5Address = socks5Address
+	}
+	if isFlagPresent("username") {
+		data.Username = username
+	}
+	if isFlagPresent("password") {
+		data.Password = password
 	}
 	if isFlagPresent("fake-dns") {
 		data.FakeDNS = fakeDns
@@ -187,7 +197,7 @@ func runDaemon() error {
 		}()
 	}
 
-	err = manageTun(tunMTU, tunFd, proxy.SOCKS5("tcp", cfg.Socks5Address, nil), fakeDNSServer)
+	err = manageTun(tunMTU, tunFd, proxy.SOCKS5("tcp", cfg.Socks5Address, cfg.Username, cfg.Password), fakeDNSServer)
 	if err != nil {
 		return err
 	}
