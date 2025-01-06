@@ -13,6 +13,8 @@ var DefaultConfig = Config{
 	TunIP:         net.IP{10, 0, 0, 1},
 	TunMask:       net.IPMask{255, 255, 255, 255},
 	Socks5Address: "127.0.0.1:1080",
+	Username:      "",
+	Password:      "",
 	FakeDNS:       true,
 	FakeNetwork: &net.IPNet{
 		IP:   net.IP{240, 0, 0, 0},
@@ -25,6 +27,8 @@ type Data struct {
 	TunName       *string `json:"tun_name,omitempty"`
 	TunIP         *string `json:"tun_ip,omitempty"`
 	Socks5Address *string `json:"socks5_address,omitempty"`
+	Username      *string `json:"username,omitempty"`
+	Password      *string `json:"password,omitempty"`
 	FakeDNS       *bool   `json:"fake_dns,omitempty"`
 	FakeNetwork   *string `json:"fake_network,omitempty"`
 	DNSServer     *string `json:"dns_server,omitempty"`
@@ -35,6 +39,8 @@ type Config struct {
 	TunIP         net.IP
 	TunMask       net.IPMask
 	Socks5Address string
+	Username      string
+	Password      string
 	FakeDNS       bool
 	FakeNetwork   *net.IPNet
 	DNSServer     string
@@ -67,6 +73,12 @@ func (cfg *Config) Update(data Data) error {
 			return fmt.Errorf("Invalid socks5 address: %s: %w", *data.Socks5Address, err)
 		}
 		cfg.Socks5Address = addr.String()
+	}
+	if data.Username != nil {
+		cfg.Username = *data.Username
+	}
+	if data.Password != nil {
+		cfg.Password = *data.Password
 	}
 	if data.FakeDNS != nil {
 		cfg.FakeDNS = *data.FakeDNS
