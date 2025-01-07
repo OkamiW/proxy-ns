@@ -9,6 +9,13 @@ GO_SOURCES = $(shell find $(GO_DIR) -name '*.go') $(GO_DIR)/go.mod $(GO_DIR)/go.
 proxy-ns: $(GO_SOURCES) Makefile
 	CGO_ENABLED=0 go build -ldflags '-s -w -buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o proxy-ns
 
+test:
+	GOARCH=386 CGO_ENABLED=0 go build -o /dev/null
+	GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null
+	GOARCH=arm CGO_ENABLED=0 go build -o /dev/null
+	GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null
+	GOARCH=riscv64 CGO_ENABLED=0 go build -o /dev/null
+
 install: proxy-ns
 	install -Dm 755 proxy-ns $(DESTDIR)$(bindir)/proxy-ns
 	setcap cap_net_bind_service,cap_fowner,cap_chown,cap_sys_chroot,cap_sys_admin,cap_net_admin=ep $(DESTDIR)$(bindir)/proxy-ns
@@ -19,4 +26,4 @@ install-config:
 clean:
 	rm -f proxy-ns
 
-.PHONY: install install-config clean
+.PHONY: test install install-config clean
