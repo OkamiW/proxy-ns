@@ -78,7 +78,7 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-		err = syscall.Dup2(int(devNull.Fd()), 2)
+		err = unix.Dup2(int(devNull.Fd()), 2)
 		if err != nil {
 			os.Exit(1)
 		}
