@@ -296,7 +296,7 @@ func runMain(cfg *config.Config, args []string) error {
 		return err
 	}
 
-	err = syscall.Unmount(os.TempDir(), 0)
+	err = unix.Unmount(os.TempDir(), 0)
 	if err != nil {
 		return err
 	}
