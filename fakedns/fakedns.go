@@ -80,7 +80,11 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			ip   net.IP
 			next uint32
 		)
-		actual, loaded := s.mapping.LoadOrStore(question.Name, uint32(0))
+		domain := question.Name
+		if dns.IsFqdn(domain) {
+			domain = domain[:len(domain)-1]
+		}
+		actual, loaded := s.mapping.LoadOrStore(domain, uint32(0))
 		if !loaded {
 			for {
 				next = s.next.Add(1)
@@ -90,8 +94,8 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 				}
 				break
 			}
-			s.mapping.Store(question.Name, next)
-			s.reversedMapping.Store(next, question.Name)
+			s.mapping.Store(domain, next)
+			s.reversedMapping.Store(next, domain)
 		} else {
 			next = actual.(uint32)
 		}
