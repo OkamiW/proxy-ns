@@ -109,7 +109,7 @@ func (d *socks5Dialer) dialUDP(target socks5.Addr) (net.Conn, error) {
 		}
 		boundAddr.IP = udpAddr.IP
 	}
-	return &socks5UDPConn{Conn: udpConn, tcpConn: conn, targetAddr: target}, nil
+	return &socks5UDPConn{UDPConn: udpConn.(*net.UDPConn), tcpConn: conn, targetAddr: target}, nil
 }
 
 func (d *socks5Dialer) serializeAddr(address string) (socks5.Addr, error) {
@@ -140,14 +140,14 @@ func splitHostPort(address string) (string, uint16, error) {
 }
 
 type socks5UDPConn struct {
-	net.Conn
+	*net.UDPConn
 	tcpConn    net.Conn
 	targetAddr socks5.Addr
 }
 
 func (c *socks5UDPConn) Read(b []byte) (n int, err error) {
 	buf := make([]byte, 65535)
-	n, err = c.Conn.Read(buf)
+	n, err = c.UDPConn.Read(buf)
 	if err != nil {
 		return
 	}
@@ -172,7 +172,7 @@ func (c *socks5UDPConn) Write(b []byte) (n int, err error) {
 	if err != nil {
 		return
 	}
-	n, err = c.Conn.Write(packet)
+	n, err = c.UDPConn.Write(packet)
 	if err != nil {
 		return
 	}
@@ -184,5 +184,5 @@ func (c *socks5UDPConn) Write(b []byte) (n int, err error) {
 
 func (c *socks5UDPConn) Close() error {
 	c.tcpConn.Close()
-	return c.Conn.Close()
+	return c.UDPConn.Close()
 }

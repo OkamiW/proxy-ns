@@ -6,14 +6,17 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"proxy-ns/proxy"
+
 	"github.com/miekg/dns"
 )
 
 const maxTtl = 10
 
-func NewServer(packetConn net.PacketConn, upstreamServer string, fakeNetwork *net.IPNet) *Server {
+func NewServer(packetConn net.PacketConn, dialer proxy.Dialer, upstreamServer string, fakeNetwork *net.IPNet) *Server {
 	s := &Server{
 		packetConn:     packetConn,
+		dialer:         dialer,
 		upstreamServer: upstreamServer,
 		fakeNetwork:    fakeNetwork,
 	}
@@ -28,6 +31,7 @@ func NewServer(packetConn net.PacketConn, upstreamServer string, fakeNetwork *ne
 
 // Fake A and AAAA records, forward other records
 type Server struct {
+	dialer         proxy.Dialer
 	packetConn     net.PacketConn
 	upstreamServer string
 	fakeNetwork    *net.IPNet
@@ -112,7 +116,13 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			},
 		}
 	default:
-		em, err := dns.Exchange(r, s.upstreamServer)
+		conn, err := s.dialer.Dial("udp", s.upstreamServer)
+		if err != nil {
+			w.WriteMsg(m)
+			return
+		}
+		defer conn.Close()
+		em, err := ExchangeConn(conn, r)
 		if err != nil {
 			w.WriteMsg(m)
 			return
@@ -128,4 +138,17 @@ func (s *Server) Run() error {
 		Handler:    s,
 	}
 	return server.ActivateAndServe()
+}
+
+func ExchangeConn(c net.Conn, m *dns.Msg) (r *dns.Msg, err error) {
+	co := new(dns.Conn)
+	co.Conn = c
+	if err = co.WriteMsg(m); err != nil {
+		return nil, err
+	}
+	r, err = co.ReadMsg()
+	if err == nil && r.Id != m.Id {
+		err = dns.ErrId
+	}
+	return r, err
 }
