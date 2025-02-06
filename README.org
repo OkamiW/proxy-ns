@@ -67,22 +67,21 @@ Temporarily disable =fake-dns=:
 
 Execute your shell in =proxy-ns= environment:
 
-All programs launched in the shell
-would be forced to use your configured proxy.
+(All programs launched in the shell
+would be forced to use your configured proxy.)
 #+begin_src
   exec proxy-ns $SHELL
 #+end_src
 
 Launch firefox in =proxy-ns=:
 
-Note:
-Neither chromium nor firefox implement UDP associate
+(Neither chromium nor firefox implement UDP associate
 in their SOCKS5 client.
 Thereby when a proxy is set, QUIC would be disabled.
 
 If you launch the browser in =proxy-ns=,
 instead of specifying the proxy in the browser setting,
-QUIC can be utilized to reduce latency.
+QUIC can be utilized to reduce latency.)
 
 #+begin_src
   proxy-ns firefox
