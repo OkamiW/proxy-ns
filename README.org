@@ -77,7 +77,7 @@ would be forced to use your configured proxy)
 FakeDNS can be used to avoid a separate DNS roundtrip, thus improving
 latency. But it has its own limitations:
 - All domains are resolved to =fake_network=, some programs may not
-  work as expected(e.g. =geoiplookup=).
+  work as expected(e.g. =dig=, =geoiplookup=).
 - Some programs may not use your system DNS resolver. FakeDNS won't
   work for them.
 
