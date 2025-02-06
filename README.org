@@ -20,6 +20,59 @@ You can manually clone this repository, then use =make install=.
   sudo make install-config # only for first installation
 #+end_src
 
+** Configuration
+You can find the default configuration location by running help:
+#+begin_src sh
+  proxy-ns --help
+#+end_src
+
+Typically, you only need to change =socks5_address=.
+
+If your socks5 server has authentication, set =username= and
+=password= as well.
+
+#+begin_src js-json
+  {
+    "tun_name": "tun0",
+    "tun_ip": "10.0.0.1/24",
+    "socks5_address": "127.0.0.1:1080",
+    "username": "",
+    "password": "",
+    "fake_dns": true,
+    "fake_network": "240.0.0.0/4",
+    "dns_server": "9.9.9.9"
+  }
+#+end_src
+
+** Usage
+Force =curl= to use your configured proxy:
+#+begin_src sh
+  proxy-ns curl g.co
+#+end_src
+
+With a different configuration file:
+#+begin_src sh
+  proxy-ns -c ./config.json curl g.co
+#+end_src
+
+Temporarily use another proxy server:
+#+begin_src sh
+  proxy-ns --socks5-address=127.0.0.1:9050 curl g.co
+#+end_src
+
+Temporarily disable =fake-dns=:
+#+begin_src sh
+  proxy-ns --fake-dns=false dig g.co
+#+end_src
+
+Execute your shell in =proxy-ns= environment:
+
+(All programs launched in the shell
+would be forced to use your configured proxy)
+#+begin_src
+  exec proxy-ns $SHELL
+#+end_src
+
 ** Notes about FakeDNS
 FakeDNS can be used to avoid a separate DNS roundtrip, thus improving
 latency. But it has its own limitations:
