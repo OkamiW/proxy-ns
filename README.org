@@ -69,7 +69,7 @@ Execute your shell in =proxy-ns= environment:
 
 (All programs launched in the shell
 would be forced to use your configured proxy.)
-#+begin_src
+#+begin_src sh
   exec proxy-ns $SHELL
 #+end_src
 
@@ -83,7 +83,7 @@ If you launch the browser in =proxy-ns=,
 instead of specifying the proxy in the browser setting,
 QUIC can be utilized to reduce latency.)
 
-#+begin_src
+#+begin_src sh
   proxy-ns firefox
 #+end_src
 
