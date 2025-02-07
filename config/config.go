@@ -8,21 +8,6 @@ import (
 	"os"
 )
 
-var DefaultConfig = Config{
-	TunName:       "tun0",
-	TunIP:         net.IP{10, 0, 0, 1},
-	TunMask:       net.IPMask{255, 255, 255, 255},
-	Socks5Address: "127.0.0.1:1080",
-	Username:      "",
-	Password:      "",
-	FakeDNS:       true,
-	FakeNetwork: &net.IPNet{
-		IP:   net.IP{240, 0, 0, 0},
-		Mask: net.IPMask{240, 0, 0, 0},
-	},
-	DNSServer: "9.9.9.9",
-}
-
 type Data struct {
 	TunName       *string `json:"tun_name,omitempty"`
 	TunIP         *string `json:"tun_ip,omitempty"`
@@ -104,7 +89,6 @@ func FromFile(path string) (*Config, error) {
 		return nil, fmt.Errorf("Config file not found")
 	}
 
-	var cfg Config = DefaultConfig
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open config: %w", err)
@@ -119,6 +103,26 @@ func FromFile(path string) (*Config, error) {
 		return nil, fmt.Errorf("Failed to decode %s: %w", path, err)
 	}
 
+	if data.TunName == nil {
+		return nil, errors.New("tun_name not specified")
+	}
+	if data.TunIP == nil {
+		return nil, errors.New("tun_ip not specified")
+	}
+	if data.Socks5Address == nil {
+		return nil, errors.New("socks5_address not specified")
+	}
+	if data.FakeDNS == nil {
+		return nil, errors.New("fake_dns not specified")
+	}
+	if data.FakeNetwork == nil {
+		return nil, errors.New("fake_network not specified")
+	}
+	if data.DNSServer == nil {
+		return nil, errors.New("dns_server not specified")
+	}
+
+	cfg := Config{}
 	err = cfg.Update(data)
 	if err != nil {
 		return nil, err
