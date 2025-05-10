@@ -226,6 +226,8 @@ func getNs(nstype string) (int, error) {
 
 func runMain(cfg *config.Config, args []string) error {
 	var (
+		daemonArgs []string
+
 		originMntNs, originNetNs int
 		newMntNs, newNetNs       int
 
@@ -421,8 +423,8 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	os.Args = slices.Insert(os.Args, 1, "--daemon")
-	_, err = os.StartProcess(execName, os.Args, &os.ProcAttr{
+	daemonArgs = slices.Insert(slices.Clone(os.Args), 1, "--daemon")
+	_, err = os.StartProcess(execName, daemonArgs, &os.ProcAttr{
 		Dir: "/",
 		Files: []*os.File{
 			nullFile, nullFile, os.Stderr, r,
