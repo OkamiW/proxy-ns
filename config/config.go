@@ -11,6 +11,7 @@ import (
 type Data struct {
 	TunName       *string `json:"tun_name,omitempty"`
 	TunIP         *string `json:"tun_ip,omitempty"`
+	TunIP6        *string `json:"tun_ip6,omitempty"`
 	Socks5Address *string `json:"socks5_address,omitempty"`
 	Username      *string `json:"username,omitempty"`
 	Password      *string `json:"password,omitempty"`
@@ -23,6 +24,8 @@ type Config struct {
 	TunName       string
 	TunIP         net.IP
 	TunMask       net.IPMask
+	TunIP6        net.IP
+	TunMask6      net.IPMask
 	Socks5Address string
 	Username      string
 	Password      string
@@ -45,6 +48,14 @@ func (cfg *Config) Update(data Data) error {
 		}
 		cfg.TunIP = ip
 		cfg.TunMask = ipNet.Mask
+	}
+	if data.TunIP6 != nil {
+		ip, ipNet, err := net.ParseCIDR(*data.TunIP6)
+		if err != nil {
+			return fmt.Errorf("Invalid tun ip: %s: %w", *data.TunIP6, err)
+		}
+		cfg.TunIP6 = ip
+		cfg.TunMask6 = ipNet.Mask
 	}
 	if data.Socks5Address != nil {
 		if *data.Socks5Address == "" {
@@ -108,6 +119,9 @@ func FromFile(path string) (*Config, error) {
 	}
 	if data.TunIP == nil {
 		return nil, errors.New("tun_ip not specified")
+	}
+	if data.TunIP6 == nil {
+		return nil, errors.New("tun_ip6 not specified")
 	}
 	if data.Socks5Address == nil {
 		return nil, errors.New("socks5_address not specified")

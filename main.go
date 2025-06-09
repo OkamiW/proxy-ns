@@ -67,6 +67,7 @@ func main() {
 	cfgPath := flag.String("c", ConfigPath, "")
 	tunName := flag.String("tun-name", "", "")
 	tunIp := flag.String("tun-ip", "", "")
+	tunIp6 := flag.String("tun-ip6", "", "")
 	socks5Address := flag.String("socks5-address", "", "")
 	username := flag.String("username", "", "")
 	password := flag.String("password", "", "")
@@ -118,6 +119,9 @@ func main() {
 	}
 	if isFlagPresent("tun-ip") {
 		data.TunIP = tunIp
+	}
+	if isFlagPresent("tun-ip6") {
+		data.TunIP6 = tunIp6
 	}
 	if isFlagPresent("socks5-address") {
 		data.Socks5Address = socks5Address
@@ -369,9 +373,28 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+	err = netlink.AddrAdd(tunLink, &netlink.Addr{
+		IPNet: &net.IPNet{
+			IP:   cfg.TunIP6,
+			Mask: cfg.TunMask6,
+		},
+	})
+	if err != nil {
+		return err
+	}
 	err = netlink.RouteAdd(&netlink.Route{
 		Dst:       &net.IPNet{},
 		Gw:        cfg.TunIP,
+		LinkIndex: tunLink.Attrs().Index,
+	})
+	if err != nil {
+		return err
+	}
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst: &net.IPNet{
+			IP:   net.IPv6zero,
+			Mask: net.CIDRMask(0, 128),
+		},
 		LinkIndex: tunLink.Attrs().Index,
 	})
 	if err != nil {
