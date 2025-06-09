@@ -383,8 +383,10 @@ func runMain(cfg *config.Config, args []string) error {
 		return err
 	}
 	err = netlink.RouteAdd(&netlink.Route{
-		Dst:       &net.IPNet{},
-		Gw:        cfg.TunIP,
+		Dst: &net.IPNet{
+			IP:   net.IPv4zero,
+			Mask: net.CIDRMask(0, 32),
+		},
 		LinkIndex: tunLink.Attrs().Index,
 	})
 	if err != nil {
