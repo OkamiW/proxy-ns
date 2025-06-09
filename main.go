@@ -43,7 +43,8 @@ Options:
 
 These options override settings in config file:
   --tun-name=<TUN_NAME>              Set tun device name
-  --tun-ip=<TUN_IP>                  Set tun device ip
+  --tun-ip=<TUN_IP>                  Set tun device IPv4 address
+  --tun-ip6=<TUN_IP6>                Set tun device IPv6 address (optional)
   --socks5-address=<SOCKS5_ADDRESS>  Use the specified proxy
   --username=<SOCKS5_USER>           Username of the specified proxy (optional)
   --password=<SOCKS5_PASS>           Password of the specified proxy (optional)
