@@ -373,14 +373,16 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	err = netlink.AddrAdd(tunLink, &netlink.Addr{
-		IPNet: &net.IPNet{
-			IP:   cfg.TunIP6,
-			Mask: cfg.TunMask6,
-		},
-	})
-	if err != nil {
-		return err
+	if len(cfg.TunIP6) != 0 && len(cfg.TunMask6) != 0 {
+		err = netlink.AddrAdd(tunLink, &netlink.Addr{
+			IPNet: &net.IPNet{
+				IP:   cfg.TunIP6,
+				Mask: cfg.TunMask6,
+			},
+		})
+		if err != nil {
+			return err
+		}
 	}
 	err = netlink.RouteAdd(&netlink.Route{
 		Dst: &net.IPNet{
@@ -392,15 +394,17 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	err = netlink.RouteAdd(&netlink.Route{
-		Dst: &net.IPNet{
-			IP:   net.IPv6zero,
-			Mask: net.CIDRMask(0, 128),
-		},
-		LinkIndex: tunLink.Attrs().Index,
-	})
-	if err != nil {
-		return err
+	if len(cfg.TunIP6) != 0 && len(cfg.TunMask6) != 0 {
+		err = netlink.RouteAdd(&netlink.Route{
+			Dst: &net.IPNet{
+				IP:   net.IPv6zero,
+				Mask: net.CIDRMask(0, 128),
+			},
+			LinkIndex: tunLink.Attrs().Index,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	tunMTU, err = rawfile.GetMTU(cfg.TunName)

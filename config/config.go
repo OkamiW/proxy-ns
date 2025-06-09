@@ -50,12 +50,17 @@ func (cfg *Config) Update(data Data) error {
 		cfg.TunMask = ipNet.Mask
 	}
 	if data.TunIP6 != nil {
-		ip, ipNet, err := net.ParseCIDR(*data.TunIP6)
-		if err != nil {
-			return fmt.Errorf("Invalid tun ip: %s: %w", *data.TunIP6, err)
+		if *data.TunIP6 != "" {
+			ip, ipNet, err := net.ParseCIDR(*data.TunIP6)
+			if err != nil {
+				return fmt.Errorf("Invalid tun ip: %s: %w", *data.TunIP6, err)
+			}
+			cfg.TunIP6 = ip
+			cfg.TunMask6 = ipNet.Mask
+		} else {
+			cfg.TunIP6 = nil
+			cfg.TunMask6 = nil
 		}
-		cfg.TunIP6 = ip
-		cfg.TunMask6 = ipNet.Mask
 	}
 	if data.Socks5Address != nil {
 		if *data.Socks5Address == "" {
@@ -119,9 +124,6 @@ func FromFile(path string) (*Config, error) {
 	}
 	if data.TunIP == nil {
 		return nil, errors.New("tun_ip not specified")
-	}
-	if data.TunIP6 == nil {
-		return nil, errors.New("tun_ip6 not specified")
 	}
 	if data.Socks5Address == nil {
 		return nil, errors.New("socks5_address not specified")
