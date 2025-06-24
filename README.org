@@ -97,6 +97,16 @@ latency. But it has its own limitations:
 - Some programs may not use your system DNS resolver. FakeDNS won't
   work for them.
 
+** Notes on capabilities
+- =cap_sys_admin= is for =setns= system call.
+- =cap_net_admin= is for creating TUN device.
+- =cap_net_bind_service= is for the FakeDNS server listening on =127.0.0.1:53=.
+- =cap_sys_chroot= is for =setns= into a new mount namespace.
+- =cap_chown= is for =chown 0:0 /etc/resolv.conf=.
+
+All capabilities are dropped permanently before the program's main loop
+(See =dropPrivilege= in =main.go=).
+
 ** FAQ
 *** Why can't I ping as a normal user inside =proxy-ns=?
 Because =proxy-ns= creates a new network namespace.
