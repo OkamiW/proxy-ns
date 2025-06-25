@@ -103,31 +103,31 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 	}
 
 	tcpForwarder := tcp.NewForwarder(s, defaultWndSize, maxConnAttempts, func(r *tcp.ForwarderRequest) {
-		var wq waiter.Queue
-		ep, e := r.CreateEndpoint(&wq)
-		if e != nil {
-			r.Complete(true)
-			return
-		}
-
-		originConn := gonet.NewTCPConn(&wq, ep)
-
 		remoteAddrStr := addrFromID(r.ID())
 		if remoteAddrStr == "" {
 			r.Complete(true)
 			return
 		}
 
-		r.Complete(false)
+		remoteConn, err := dialer.Dial("tcp", remoteAddrStr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			r.Complete(true)
+			return
+		}
 
-		go func() {
-			remoteConn, err := dialer.Dial("tcp", remoteAddrStr)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return
-			}
-			forwardConn(originConn, remoteConn, io.Copy)
-		}()
+		var wq waiter.Queue
+		ep, e := r.CreateEndpoint(&wq)
+		if e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			r.Complete(true)
+			return
+		}
+
+		originConn := gonet.NewTCPConn(&wq, ep)
+
+		r.Complete(false)
+		go forwardConn(originConn, remoteConn, io.Copy)
 	})
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		var wq waiter.Queue
