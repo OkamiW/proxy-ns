@@ -154,13 +154,21 @@ func main() {
 	}
 }
 
-func dropPrivilege() error {
+func dropCapabilities() error {
 	hdr := &unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
 	data := &unix.CapUserData{}
 	if _, _, e1 := syscall.AllThreadsSyscall6(unix.SYS_CAPSET, uintptr(unsafe.Pointer(hdr)), uintptr(unsafe.Pointer(data)), 0, 0, 0, 0); e1 != 0 {
 		return fmt.Errorf("Failed to capset: %s", e1)
 	}
 
+	return nil
+}
+
+func dropPrivilege() error {
+	err := dropCapabilities()
+	if err != nil {
+		return err
+	}
 	if _, _, e1 := syscall.AllThreadsSyscall6(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0, 0); e1 != 0 {
 		return fmt.Errorf("Failed to prctl PR_SET_NO_NEW_PRIVS: %s", e1)
 	}
@@ -500,5 +508,11 @@ func runMain(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	err = dropCapabilities()
+	if err != nil {
+		return err
+	}
+
 	return unix.Exec(progName, args, os.Environ())
 }
