@@ -120,6 +120,7 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 		ep, e := r.CreateEndpoint(&wq)
 		if e != nil {
 			fmt.Fprintln(os.Stderr, e)
+			remoteConn.Close()
 			r.Complete(true)
 			return
 		}
