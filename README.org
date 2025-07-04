@@ -35,7 +35,6 @@ If your SOCKS5 server has authentication, set =username= and
   {
     "tun_name": "tun0",
     "tun_ip": "10.0.0.1/24",
-    "tun_ip6": "fc00::1/7",
     "socks5_address": "127.0.0.1:1080",
     "username": "",
     "password": "",
@@ -44,6 +43,17 @@ If your SOCKS5 server has authentication, set =username= and
     "dns_server": "9.9.9.9"
   }
 #+end_src
+
+If your SOCKS5 server supports IPv6, you can add the following
+configuration to enable IPv6 routing:
+#+begin_src js-json
+  {
+    "tun_ip6": "fc00::1/7"
+  }
+#+end_src
+
+Don't enable IPv6 routing if your SOCKS5 server doesn't support IPv6,
+as it may break your program's connections to hosts with IPv6 addresses.
 
 ** Usage
 Force =curl= to use your configured proxy:
