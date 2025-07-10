@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"proxy-ns/fakedns"
+	"proxy-ns/network"
 	"proxy-ns/proxy"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -25,20 +26,7 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-const (
-	// defaultWndSize if set to zero, the default
-	// receive window buffer size is used instead.
-	defaultWndSize = 0
-
-	// maxConnAttempts specifies the maximum number
-	// of in-flight tcp connection attempts.
-	maxConnAttempts = 2 << 10
-
-	udpSessionTimeout = time.Minute
-	maxPacketSize     = (1 << 16) - 1
-)
-
-func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.Server) (err error) {
+func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServer *fakedns.Server) (err error) {
 	s := stack.New(stack.Options{
 		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
 		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
@@ -102,14 +90,14 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 		}
 	}
 
-	tcpForwarder := tcp.NewForwarder(s, defaultWndSize, maxConnAttempts, func(r *tcp.ForwarderRequest) {
+	tcpForwarder := tcp.NewForwarder(s, 0, 2<<10, func(r *tcp.ForwarderRequest) {
 		remoteAddrStr := addrFromID(r.ID())
 		if remoteAddrStr == "" {
 			r.Complete(true)
 			return
 		}
 
-		remoteConn, err := dialer.Dial("tcp", remoteAddrStr)
+		remoteConn, err := socks5Client.Connect(remoteAddrStr)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			r.Complete(true)
@@ -119,7 +107,6 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 		var wq waiter.Queue
 		ep, e := r.CreateEndpoint(&wq)
 		if e != nil {
-			fmt.Fprintln(os.Stderr, e)
 			remoteConn.Close()
 			r.Complete(true)
 			return
@@ -130,6 +117,35 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 		r.Complete(false)
 		go forwardConn(originConn, remoteConn, io.Copy)
 	})
+	type endpoint struct {
+		address tcpip.Address
+		port    uint16
+	}
+	var relays sync.Map
+	relayFromID := func(id stack.TransportEndpointID) *proxy.SOCKS5UDPRelayClient {
+		ep := endpoint{
+			address: id.RemoteAddress,
+			port:    id.RemotePort,
+		}
+		onceValue := sync.OnceValue(func() *proxy.SOCKS5UDPRelayClient {
+			relay, err := socks5Client.UDPAssociate()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return nil
+			}
+			relay.SetFinalizer(func() {
+				relays.Delete(ep)
+			})
+			return relay
+		})
+		actual, _ := relays.LoadOrStore(ep, onceValue)
+		relay := actual.(func() *proxy.SOCKS5UDPRelayClient)()
+		if relay == nil {
+			relays.Delete(ep)
+			return nil
+		}
+		return relay
+	}
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		var wq waiter.Queue
 		ep, e := r.CreateEndpoint(&wq)
@@ -139,13 +155,17 @@ func manageTun(mtu uint32, fd int, dialer proxy.Dialer, fakeDNSServer *fakedns.S
 
 		originConn := gonet.NewUDPConn(&wq, ep)
 
-		remoteAddrStr := addrFromID(r.ID())
+		id := r.ID()
+		remoteAddrStr := addrFromID(id)
 		if remoteAddrStr == "" {
 			return
 		}
-
 		go func() {
-			remoteConn, err := dialer.Dial("udp", remoteAddrStr)
+			relay := relayFromID(id)
+			if relay == nil {
+				return
+			}
+			remoteConn, err := relay.Dial(remoteAddrStr)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return
@@ -189,9 +209,9 @@ func forwardConn(c1, c2 net.Conn, copyFn func(io.Writer, io.Reader) (int64, erro
 var errInvalidWrite = errors.New("invalid write result")
 
 func copyPacketData(dst io.Writer, src io.Reader) (written int64, err error) {
-	buf := make([]byte, maxPacketSize)
+	buf := make([]byte, network.MaxPacketSize)
 	for {
-		src.(net.Conn).SetReadDeadline(time.Now().Add(udpSessionTimeout))
+		src.(net.Conn).SetReadDeadline(time.Now().Add(network.UDPSessionTimeout))
 		nr, er := src.Read(buf)
 		if nr > 0 {
 			nw, ew := dst.Write(buf[0:nr])
@@ -217,7 +237,7 @@ func copyPacketData(dst io.Writer, src io.Reader) (written int64, err error) {
 			}
 			break
 		}
-		dst.(net.Conn).SetReadDeadline(time.Now().Add(udpSessionTimeout))
+		dst.(net.Conn).SetReadDeadline(time.Now().Add(network.UDPSessionTimeout))
 	}
 	return written, err
 }

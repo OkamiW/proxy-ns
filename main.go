@@ -196,14 +196,14 @@ func runDaemon() error {
 
 	var fakeDNSServer *fakedns.Server
 
-	dialer := proxy.SOCKS5("tcp", cfg.Socks5Address, cfg.Username, cfg.Password)
+	socks5Client := proxy.SOCKS5("tcp", cfg.Socks5Address, cfg.Username, cfg.Password)
 
 	if cfg.FakeDNS {
 		packetConn, err := net.FilePacketConn(os.NewFile(uintptr(packetConnFd), ""))
 		if err != nil {
 			return fmt.Errorf("Failed to get PacketConn: %w", err)
 		}
-		fakeDNSServer = fakedns.NewServer(packetConn, dialer, net.JoinHostPort(cfg.DNSServer, "53"), cfg.FakeNetwork)
+		fakeDNSServer = fakedns.NewServer(packetConn, socks5Client, net.JoinHostPort(cfg.DNSServer, "53"), cfg.FakeNetwork)
 		go func() {
 			err := fakeDNSServer.Run()
 			if err != nil {
@@ -212,7 +212,7 @@ func runDaemon() error {
 		}()
 	}
 
-	err = manageTun(tunMTU, tunFd, dialer, fakeDNSServer)
+	err = manageTun(tunMTU, tunFd, socks5Client, fakeDNSServer)
 	if err != nil {
 		return fmt.Errorf("Failed to manage TUN: %w", err)
 	}

@@ -1,61 +1,71 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
+	"os"
+	"slices"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"proxy-ns/network"
 	"proxy-ns/proxy/transport/socks5"
 )
 
-type socks5Dialer struct {
+type SOCKS5Client struct {
 	network string
 	address string
 	auth    *socks5.Auth
 }
 
-func SOCKS5(network, address, username, password string) Dialer {
+func SOCKS5(network, address, username, password string) *SOCKS5Client {
 	if username != "" && password != "" {
-		return &socks5Dialer{
+		return &SOCKS5Client{
 			network: network,
 			address: address,
-			auth:    &socks5.Auth{
+			auth: &socks5.Auth{
 				Username: username,
 				Password: password,
 			},
 		}
 	}
-	return &socks5Dialer{
+	return &SOCKS5Client{
 		network: network,
 		address: address,
 		auth:    nil,
 	}
 }
 
-func (d *socks5Dialer) Dial(network, address string) (net.Conn, error) {
-	addr, err := d.serializeAddr(address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize address: %s", address)
-	}
+func (d *SOCKS5Client) Dial(network, address string) (net.Conn, error) {
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		return d.dialTCP(addr)
+		return d.Connect(address)
 	case "udp", "udp4", "udp6":
-		return d.dialUDP(addr)
+		relay, err := d.UDPAssociate()
+		if err != nil {
+			return nil, fmt.Errorf("failed to request udp associate: %w", err)
+		}
+		return relay.Dial(address)
 	default:
 		return nil, fmt.Errorf("network not implemented: %s", network)
 	}
 }
 
-func (d *socks5Dialer) dialTCP(target socks5.Addr) (net.Conn, error) {
+func (d *SOCKS5Client) Connect(address string) (net.Conn, error) {
+	addr, err := serializeAddr(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize address: %w", err)
+	}
 	conn, err := net.Dial(d.network, d.address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", d.address, err)
 	}
 
-	_, err = socks5.ClientHandshake(conn, target, socks5.CmdConnect, d.auth)
+	_, err = socks5.ClientHandshake(conn, addr, socks5.CmdConnect, d.auth)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to perform client handshake: %w", err)
@@ -63,7 +73,7 @@ func (d *socks5Dialer) dialTCP(target socks5.Addr) (net.Conn, error) {
 	return conn, nil
 }
 
-func (d *socks5Dialer) dialUDP(target socks5.Addr) (net.Conn, error) {
+func (d *SOCKS5Client) UDPAssociate() (*SOCKS5UDPRelayClient, error) {
 	conn, err := net.Dial(d.network, d.address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", d.address, err)
@@ -84,35 +94,23 @@ func (d *socks5Dialer) dialUDP(target socks5.Addr) (net.Conn, error) {
 		conn.Close()
 		return nil, fmt.Errorf("failed to perform client handshake: %w", err)
 	}
-	udpConn, err := net.Dial("udp", addr.String())
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to dial bound address: %s: %w", addr, err)
-	}
-	go func() {
-		io.Copy(io.Discard, conn)
-		conn.Close()
-		// A UDP association terminates when the TCP connection that the UDP
-		// ASSOCIATE request arrived on terminates. RFC1928
-		udpConn.Close()
-	}()
 
-	boundAddr := addr.UDPAddr()
-	if boundAddr == nil {
+	relayAddr := addr.UDPAddr()
+	if relayAddr == nil {
 		return nil, fmt.Errorf("invalid UDP binding address: %#v", addr)
 	}
 
-	if boundAddr.IP.IsUnspecified() { /* e.g. "0.0.0.0" or "::" */
+	if relayAddr.IP.IsUnspecified() { /* e.g. "0.0.0.0" or "::" */
 		udpAddr, err := net.ResolveUDPAddr("udp", d.address)
 		if err != nil {
 			return nil, fmt.Errorf("resolve udp address %s: %w", d.address, err)
 		}
-		boundAddr.IP = udpAddr.IP
+		relayAddr.IP = udpAddr.IP
 	}
-	return &socks5UDPConn{UDPConn: udpConn.(*net.UDPConn), tcpConn: conn, targetAddr: target}, nil
+	return NewSOCKS5UDPRelayClient(conn, relayAddr)
 }
 
-func (d *socks5Dialer) serializeAddr(address string) (socks5.Addr, error) {
+func serializeAddr(address string) (socks5.Addr, error) {
 	host, port, err := splitHostPort(address)
 	if err != nil {
 		return nil, err
@@ -139,50 +137,149 @@ func splitHostPort(address string) (string, uint16, error) {
 	return host, uint16(portnum), nil
 }
 
+type SOCKS5UDPRelayClient struct {
+	tcpConn   net.Conn
+	relayAddr net.Addr
+	pc        *muxedPacketConn
+	count     atomic.Int64
+	finalizer func()
+}
+
+func NewSOCKS5UDPRelayClient(tcpConn net.Conn, relayAddr net.Addr) (*SOCKS5UDPRelayClient, error) {
+	pc, err := net.ListenPacket("udp", "0.0.0.0:0")
+	if err != nil {
+		return nil, err
+	}
+	return &SOCKS5UDPRelayClient{
+		tcpConn:   tcpConn,
+		relayAddr: relayAddr,
+		pc:        newMuxedPacketConn(pc),
+	}, nil
+}
+
+func (r *SOCKS5UDPRelayClient) Dial(address string) (net.Conn, error) {
+	addr, err := serializeAddr(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize address: %w", err)
+	}
+	r.Add(1)
+	return &socks5UDPConn{
+		muxedPacketConn: r.pc,
+		relayClient:     r,
+		relayAddr:       r.relayAddr,
+		targetAddr:      addr,
+	}, nil
+}
+
+func (r *SOCKS5UDPRelayClient) Add(delta int64) {
+	if r.count.Add(delta) == 0 {
+		r.Close()
+	}
+}
+
+func (r *SOCKS5UDPRelayClient) SetFinalizer(f func()) {
+	r.finalizer = f
+}
+
+func (r *SOCKS5UDPRelayClient) Close() error {
+	if r.finalizer != nil {
+		r.finalizer()
+	}
+
+	r.tcpConn.Close()
+	return r.pc.Close()
+}
+
+func newMuxedPacketConn(pc net.PacketConn) *muxedPacketConn {
+	return &muxedPacketConn{PacketConn: pc}
+}
+
+type muxedPacketConn struct {
+	net.PacketConn
+	once    sync.Once
+	packets sync.Map // map[endpoint]chan []byte
+}
+
+type endpoint struct {
+	relayAddr  string
+	targetAddr string
+}
+
+func (c *muxedPacketConn) poll() {
+	buf := make([]byte, network.MaxPacketSize)
+	for {
+		n, addr, err := c.PacketConn.ReadFrom(buf)
+		if err != nil {
+			return
+		}
+		target, payload, err := socks5.DecodeUDPPacket(buf[:n])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			continue
+		}
+		ep := endpoint{
+			relayAddr:  addr.String(),
+			targetAddr: target.String(),
+		}
+		value, ok := c.packets.Load(ep)
+		if ok {
+			value.(chan []byte) <- slices.Clone(payload)
+		} else {
+			fmt.Fprintln(os.Stderr, "Dropped unrelated packet from:", addr, target)
+		}
+	}
+}
+
+func (c *muxedPacketConn) ReadFrom(p []byte, relayAddr net.Addr, target socks5.Addr) (n int, err error) {
+	ep := endpoint{
+		relayAddr:  relayAddr.String(),
+		targetAddr: target.String(),
+	}
+	actual, _ := c.packets.LoadOrStore(ep, make(chan []byte))
+	go c.once.Do(c.poll)
+	select {
+	case buf := <-actual.(chan []byte):
+		return copy(p, buf), nil
+	case <-time.After(network.UDPSessionTimeout):
+		return 0, context.DeadlineExceeded
+	}
+}
+
+func (c *muxedPacketConn) WriteTo(p []byte, relayAddr net.Addr, target socks5.Addr) (n int, err error) {
+	data, err := socks5.EncodeUDPPacket(target, p)
+	if err != nil {
+		return 0, err
+	}
+	n, err = c.PacketConn.WriteTo(data, relayAddr)
+	if err != nil {
+		return 0, err
+	}
+	if n < len(data) {
+		return 0, fmt.Errorf("short write: expected %d, not %d", len(data), n)
+	}
+	return len(p), nil
+}
+
 type socks5UDPConn struct {
-	*net.UDPConn
-	tcpConn    net.Conn
-	targetAddr socks5.Addr
+	*muxedPacketConn
+	relayClient *SOCKS5UDPRelayClient
+	relayAddr   net.Addr
+	targetAddr  socks5.Addr
 }
 
-func (c *socks5UDPConn) Read(b []byte) (n int, err error) {
-	buf := make([]byte, 65535)
-	n, err = c.UDPConn.Read(buf)
-	if err != nil {
-		return
-	}
-	addr, payload, err := socks5.DecodeUDPPacket(buf[:n])
-	if err != nil {
-		return
-	}
-
-	udpAddr := addr.UDPAddr()
-	if udpAddr == nil {
-		return 0, fmt.Errorf("convert %s to UDPAddr is nil", addr)
-	}
-	if udpAddr.String() != c.targetAddr.String() {
-		return 0, fmt.Errorf("expected remote address: %s, not %s", c.targetAddr, udpAddr)
-	}
-	copy(b, payload)
-	return n - len(addr) - 3, nil
+func (c *socks5UDPConn) Read(p []byte) (n int, err error) {
+	return c.muxedPacketConn.ReadFrom(p, c.relayAddr, c.targetAddr)
 }
 
-func (c *socks5UDPConn) Write(b []byte) (n int, err error) {
-	packet, err := socks5.EncodeUDPPacket(c.targetAddr, b)
-	if err != nil {
-		return
-	}
-	n, err = c.UDPConn.Write(packet)
-	if err != nil {
-		return
-	}
-	if n < len(packet) {
-		return 0, fmt.Errorf("short write: expected %d, not %d", len(packet), n)
-	}
-	return len(b), nil
+func (c *socks5UDPConn) Write(p []byte) (n int, err error) {
+	return c.muxedPacketConn.WriteTo(p, c.relayAddr, c.targetAddr)
+}
+
+func (c *socks5UDPConn) RemoteAddr() net.Addr {
+	return c.targetAddr.UDPAddr()
 }
 
 func (c *socks5UDPConn) Close() error {
-	c.tcpConn.Close()
-	return c.UDPConn.Close()
+	c.relayClient.Add(-1)
+	return nil
 }
