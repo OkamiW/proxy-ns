@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"proxy-ns/config"
 	"proxy-ns/fakedns"
 	"proxy-ns/network"
 	"proxy-ns/proxy"
@@ -178,8 +179,10 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 	return nil
 }
 
+type copyFunc func(io.Writer, io.Reader) (int64, error)
+
 // TODO: handle tcp closeWrite/closeRead
-func forwardConn(c1, c2 net.Conn, copyFn func(io.Writer, io.Reader) (int64, error)) error {
+func forwardConn(c1, c2 net.Conn, copyFn copyFunc) error {
 	var (
 		wg     sync.WaitGroup
 		e1, e2 error
@@ -200,7 +203,16 @@ func forwardConn(c1, c2 net.Conn, copyFn func(io.Writer, io.Reader) (int64, erro
 	}()
 	wg.Wait()
 
-	if e1 != nil || e2 != nil {
+	if e1 == nil && e2 == nil {
+		return nil
+	}
+	if e1 != nil && e2 == nil {
+		return e1
+	}
+	if e1 == nil && e2 != nil {
+		return e2
+	}
+	if e1 != nil && e2 != nil {
 		return fmt.Errorf("%w, %w", e1, e2)
 	}
 	return nil
@@ -211,7 +223,7 @@ var errInvalidWrite = errors.New("invalid write result")
 func copyPacketData(dst io.Writer, src io.Reader) (written int64, err error) {
 	buf := make([]byte, network.MaxPacketSize)
 	for {
-		src.(net.Conn).SetReadDeadline(time.Now().Add(network.UDPSessionTimeout))
+		src.(net.Conn).SetReadDeadline(time.Now().Add(config.UDPSessionTimeout))
 		nr, er := src.Read(buf)
 		if nr > 0 {
 			nw, ew := dst.Write(buf[0:nr])
@@ -237,7 +249,7 @@ func copyPacketData(dst io.Writer, src io.Reader) (written int64, err error) {
 			}
 			break
 		}
-		dst.(net.Conn).SetReadDeadline(time.Now().Add(network.UDPSessionTimeout))
+		dst.(net.Conn).SetReadDeadline(time.Now().Add(config.UDPSessionTimeout))
 	}
 	return written, err
 }

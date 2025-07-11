@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"proxy-ns/config"
 	"proxy-ns/network"
 	"proxy-ns/proxy/transport/socks5"
 )
@@ -240,7 +241,7 @@ func (c *muxedPacketConn) ReadFrom(p []byte, relayAddr net.Addr, target socks5.A
 	select {
 	case buf := <-actual.(chan []byte):
 		return copy(p, buf), nil
-	case <-time.After(network.UDPSessionTimeout):
+	case <-time.After(config.UDPSessionTimeout):
 		return 0, context.DeadlineExceeded
 	}
 }

@@ -42,16 +42,17 @@ Options:
   -c config                  Specify config file to use (Default: %s)
 
 These options override settings in config file:
-  --tun-name=<TUN_NAME>              Set tun device name
-  --tun-ip=<TUN_IP>                  Set tun device IPv4 address
-  --tun-ip6=<TUN_IP6>                Set tun device IPv6 address (optional)
-  --socks5-address=<SOCKS5_ADDRESS>  Use the specified proxy
-  --username=<SOCKS5_USER>           Username of the specified proxy (optional)
-  --password=<SOCKS5_PASS>           Password of the specified proxy (optional)
-  --fake-dns=<BOOL>                  Enable/Disable fake DNS
-  --fake-network=<NETWORK>           Set network used for fake DNS
-  --dns-server=<DNS_SERVER>          Set DNS server(only available when fake DNS is disabled)
-`, os.Args[0], ConfigPath)
+  --tun-name=<TUN_NAME>                        Set tun device name
+  --tun-ip=<TUN_IP>                            Set tun device IPv4 address
+  --tun-ip6=<TUN_IP6>                          Set tun device IPv6 address (optional)
+  --socks5-address=<SOCKS5_ADDRESS>            Use the specified proxy
+  --username=<SOCKS5_USER>                     Username of the specified proxy (optional)
+  --password=<SOCKS5_PASS>                     Password of the specified proxy (optional)
+  --fake-dns=<BOOL>                            Enable/Disable fake DNS
+  --fake-network=<NETWORK>                     Set network used for fake DNS
+  --dns-server=<DNS_SERVER>                    Set DNS server(only available when fake DNS is disabled)
+  --udp-session-timeout=<UDP_SESSION_TIMEOUT>  Set UDP session timeout (optional) (Default: %s)
+`, os.Args[0], ConfigPath, config.UDPSessionTimeout)
 }
 
 func isFlagPresent(name string) (present bool) {
@@ -75,6 +76,7 @@ func main() {
 	fakeDns := flag.Bool("fake-dns", true, "")
 	fakeNetwork := flag.String("fake-network", "", "")
 	dnsServer := flag.String("dns-server", "", "")
+	udpSessionTimeout := flag.Duration("udp-session-timeout", config.UDPSessionTimeout, "")
 	daemon := flag.Bool("daemon", false, "")
 	flag.CommandLine.Usage = usage
 	flag.Parse()
@@ -142,6 +144,9 @@ func main() {
 	if isFlagPresent("dns-server") {
 		data.DNSServer = dnsServer
 	}
+	if isFlagPresent("udp-session-timeout") {
+		data.UDPSessionTimeout = udpSessionTimeout
+	}
 	err = cfg.Update(data)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -193,6 +198,8 @@ func runDaemon() error {
 	pipeFile.Close()
 	tunMTU := data.TunMTU
 	cfg := data.Config
+
+	config.UDPSessionTimeout = cfg.UDPSessionTimeout
 
 	var fakeDNSServer *fakedns.Server
 
