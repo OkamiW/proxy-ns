@@ -385,6 +385,13 @@ func (e *endpoint) SetNDPConfigurations(c NDPConfigurations) {
 	e.mu.ndp.configs = c
 }
 
+// NDPConfigurations implements NDPEndpoint.
+func (e *endpoint) NDPConfigurations() NDPConfigurations {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.mu.ndp.configs
+}
+
 // hasTentativeAddr returns true if addr is tentative on e.
 func (e *endpoint) hasTentativeAddr(addr tcpip.Address) bool {
 	e.mu.RLock()
@@ -731,6 +738,9 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 }
 
 func addIPHeader(srcAddr, dstAddr tcpip.Address, pkt *stack.PacketBuffer, params stack.NetworkHeaderParams, extensionHeaders header.IPv6ExtHdrSerializer) tcpip.Error {
+	if params.ExperimentOptionValue != 0 {
+		extensionHeaders = append(extensionHeaders, &header.IPv6ExperimentExtHdr{Value: params.ExperimentOptionValue})
+	}
 	extHdrsLen := extensionHeaders.Length()
 	length := pkt.Size() + extensionHeaders.Length()
 	if length > math.MaxUint16 {
@@ -1133,6 +1143,9 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 		}
 	}
 
+	// CheckPrerouting can modify the backing storage of the packet, so refresh
+	// the header.
+	h = header.IPv6(pkt.NetworkHeader().Slice())
 	e.handleValidatedPacket(h, pkt, e.nic.Name() /* inNICName */)
 }
 
@@ -1300,6 +1313,13 @@ func (e *endpoint) handleForwardingError(err ip.ForwardingError) {
 		stats.Forwarding.UnknownOutputEndpoint.Increment()
 	case *ip.ErrOutgoingDeviceNoBufferSpace:
 		stats.Forwarding.OutgoingDeviceNoBufferSpace.Increment()
+	case *ip.ErrOther:
+		switch err := err.Err.(type) {
+		case *tcpip.ErrClosedForSend:
+			stats.Forwarding.OutgoingDeviceClosedForSend.Increment()
+		default:
+			panic(fmt.Sprintf("unrecognized tcpip forwarding error: %s", err))
+		}
 	default:
 		panic(fmt.Sprintf("unrecognized forwarding error: %s", err))
 	}
@@ -1446,6 +1466,7 @@ func (e *endpoint) processExtensionHeader(it *header.IPv6PayloadIterator, pkt **
 		if err := e.processIPv6RawPayloadHeader(&extHdr, it, *pkt, *routerAlert, previousHeaderStart, *hasFragmentHeader); err != nil {
 			return true, err
 		}
+	case header.IPv6ExperimentExtHdr:
 	default:
 		// Since the iterator returns IPv6RawPayloadHeader for unknown Extension
 		// Header IDs this should never happen unless we missed a supported type
@@ -1474,12 +1495,13 @@ func (e *endpoint) processExtensionHeaders(h header.IPv6, pkt *stack.PacketBuffe
 	buf.Merge(&dataBuf)
 	it := header.MakeIPv6PayloadIterator(header.IPv6ExtensionHeaderIdentifier(h.NextHeader()), buf)
 
-	// Add a reference to pkt because fragment header processing can replace this
-	// packet with a new one that has an extra reference. Adding a reference here
-	// keeps the two in parity so they can both be DecRef'd the same way.
-	pkt.IncRef()
+	// Clone the pkt here because fragment header processing can replace this
+	// packet with a new one that has an extra reference. Cloning here
+	// keeps it so this method owns the packet either way so the packet can always
+	// be DecRef'd after processing is done.
+	processingPkt := pkt.Clone()
 	defer func() {
-		pkt.DecRef()
+		processingPkt.DecRef()
 		it.Release()
 	}()
 
@@ -1488,7 +1510,8 @@ func (e *endpoint) processExtensionHeaders(h header.IPv6, pkt *stack.PacketBuffe
 		routerAlert       *header.IPv6RouterAlertOption
 	)
 	for {
-		if done, err := e.processExtensionHeader(&it, &pkt, h, &routerAlert, &hasFragmentHeader, forwarding); err != nil || done {
+		h := header.IPv6(pkt.NetworkHeader().Slice())
+		if done, err := e.processExtensionHeader(&it, &processingPkt, h, &routerAlert, &hasFragmentHeader, forwarding); err != nil || done {
 			return err
 		}
 	}

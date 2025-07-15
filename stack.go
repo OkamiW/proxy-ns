@@ -147,11 +147,11 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 		}
 		return relay
 	}
-	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
+	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) bool {
 		var wq waiter.Queue
 		ep, e := r.CreateEndpoint(&wq)
 		if e != nil {
-			return
+			return true
 		}
 
 		originConn := gonet.NewUDPConn(&wq, ep)
@@ -159,20 +159,19 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 		id := r.ID()
 		remoteAddrStr := addrFromID(id)
 		if remoteAddrStr == "" {
-			return
+			return false
 		}
-		go func() {
-			relay := relayFromID(id)
-			if relay == nil {
-				return
-			}
-			remoteConn, err := relay.Dial(remoteAddrStr)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return
-			}
-			forwardConn(originConn, remoteConn, copyPacketData)
-		}()
+		relay := relayFromID(id)
+		if relay == nil {
+			return false
+		}
+		remoteConn, err := relay.Dial(remoteAddrStr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return false
+		}
+		go forwardConn(originConn, remoteConn, copyPacketData)
+		return true
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)

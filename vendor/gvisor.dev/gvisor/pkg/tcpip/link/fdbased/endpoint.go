@@ -129,11 +129,11 @@ type endpoint struct {
 
 	// closed is a function to be called when the FD's peer (if any) closes
 	// its end of the communication pipe.
-	closed func(tcpip.Error)
+	closed func(tcpip.Error) `state:"nosave"`
 
 	inboundDispatchers []linkDispatcher
 
-	mu sync.RWMutex `state:"nosave"`
+	mu endpointRWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 
@@ -146,7 +146,7 @@ type endpoint struct {
 	gsoMaxSize uint32
 
 	// wg keeps track of running goroutines.
-	wg sync.WaitGroup
+	wg sync.WaitGroup `state:"nosave"`
 
 	// gsoKind is the supported kind of GSO.
 	gsoKind stack.SupportedGSO
@@ -422,17 +422,19 @@ func isSocketFD(fd int) (bool, error) {
 // Attach implements stack.LinkEndpoint.Attach.
 func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	// nil means the NIC is being removed.
 	if dispatcher == nil && e.dispatcher != nil {
 		for _, dispatcher := range e.inboundDispatchers {
 			dispatcher.Stop()
 		}
-		e.Wait()
 		e.dispatcher = nil
+		// NOTE(gvisor.dev/issue/11456): Unlock e.mu before e.Wait().
+		e.mu.Unlock()
+		e.Wait()
 		return
 	}
+	defer e.mu.Unlock()
 	if dispatcher != nil && e.dispatcher == nil {
 		e.dispatcher = dispatcher
 		// Link endpoints are not savable. When transportation endpoints are
@@ -559,18 +561,40 @@ func (e *endpoint) AddHeader(pkt *stack.PacketBuffer) {
 	}
 }
 
-func (e *endpoint) parseHeader(pkt *stack.PacketBuffer) bool {
-	_, ok := pkt.LinkHeader().Consume(e.hdrSize)
-	return ok
+func (e *endpoint) parseHeader(pkt *stack.PacketBuffer) (header.Ethernet, bool) {
+	if e.hdrSize <= 0 {
+		return nil, true
+	}
+	hdrBytes, ok := pkt.LinkHeader().Consume(e.hdrSize)
+	if !ok {
+		return nil, false
+	}
+	hdr := header.Ethernet(hdrBytes)
+	pkt.NetworkProtocolNumber = hdr.Type()
+	return hdr, true
+}
 
+// parseInboundHeader parses the link header of pkt and returns true if the
+// header is well-formed and sent to this endpoint's MAC or the broadcast
+// address.
+func (e *endpoint) parseInboundHeader(pkt *stack.PacketBuffer, wantAddr tcpip.LinkAddress) bool {
+	hdr, ok := e.parseHeader(pkt)
+	if !ok || e.hdrSize <= 0 {
+		return ok
+	}
+	dstAddr := hdr.DestinationAddress()
+	// Per RFC 9542 2.1 on the least significant bit of the first octet of
+	// a MAC address: "If it is zero, the MAC address is unicast. If it is
+	// a one, the address is groupcast (multicast or broadcast)." Multicast
+	// and broadcast are the same thing to ethernet; they are both sent to
+	// everyone.
+	return dstAddr == wantAddr || byte(dstAddr[0])&0x01 == 1
 }
 
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (e *endpoint) ParseHeader(pkt *stack.PacketBuffer) bool {
-	if e.hdrSize > 0 {
-		return e.parseHeader(pkt)
-	}
-	return true
+	_, ok := e.parseHeader(pkt)
+	return ok
 }
 
 // writePacket writes outbound packets to the file descriptor. If it is not
@@ -837,11 +861,11 @@ func (*endpoint) SetOnCloseAction(func()) {}
 // InjectableEndpoint is an injectable fd-based endpoint. The endpoint writes
 // to the FD, but does not read from it. All reads come from injected packets.
 //
-// +satetify savable
+// +stateify savable
 type InjectableEndpoint struct {
 	endpoint
 
-	mu sync.RWMutex `state:"nosave"`
+	mu injectableEndpointRWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 }

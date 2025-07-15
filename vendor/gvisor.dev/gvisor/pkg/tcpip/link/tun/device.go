@@ -17,10 +17,10 @@ package tun
 import (
 	"fmt"
 
+	"gvisor.dev/gvisor/pkg/atomicbitops"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
-	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
@@ -46,7 +46,7 @@ var zeroMAC [6]byte
 type Device struct {
 	waiter.Queue
 
-	mu           sync.RWMutex `state:"nosave"`
+	mu           deviceRWMutex `state:"nosave"`
 	endpoint     *tunEndpoint
 	notifyHandle *channel.NotificationHandle
 	flags        Flags
@@ -59,6 +59,7 @@ type Flags struct {
 	TUN          bool
 	TAP          bool
 	NoPacketInfo bool
+	Exclusive    bool
 }
 
 // beforeSave is invoked by stateify.
@@ -70,6 +71,19 @@ func (d *Device) beforeSave() {
 	if d.endpoint != nil {
 		panic("/dev/net/tun does not support save/restore when a device is associated with it.")
 	}
+}
+
+func (d *Device) SetPersistent(v bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.endpoint == nil {
+		return linuxerr.EBADFD
+	}
+
+	d.endpoint.setPersistent(v)
+
+	return nil
 }
 
 // Release implements fs.FileOperations.Release.
@@ -87,7 +101,7 @@ func (d *Device) Release(ctx context.Context) {
 }
 
 // SetIff services TUNSETIFF ioctl(2) request.
-func (d *Device) SetIff(s *stack.Stack, name string, flags Flags) error {
+func (d *Device) SetIff(ctx context.Context, s *stack.Stack, name string, flags Flags) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -96,7 +110,7 @@ func (d *Device) SetIff(s *stack.Stack, name string, flags Flags) error {
 	}
 
 	// Input validation.
-	if flags.TAP && flags.TUN || !flags.TAP && !flags.TUN {
+	if (flags.TAP && flags.TUN) || (!flags.TAP && !flags.TUN) {
 		return linuxerr.EINVAL
 	}
 
@@ -110,9 +124,9 @@ func (d *Device) SetIff(s *stack.Stack, name string, flags Flags) error {
 		linkCaps |= stack.CapabilityResolutionRequired
 	}
 
-	endpoint, err := attachOrCreateNIC(s, name, prefix, linkCaps)
+	endpoint, err := attachOrCreateNIC(ctx, s, name, prefix, linkCaps, flags)
 	if err != nil {
-		return linuxerr.EINVAL
+		return err
 	}
 
 	d.endpoint = endpoint
@@ -121,12 +135,17 @@ func (d *Device) SetIff(s *stack.Stack, name string, flags Flags) error {
 	return nil
 }
 
-func attachOrCreateNIC(s *stack.Stack, name, prefix string, linkCaps stack.LinkEndpointCapabilities) (*tunEndpoint, error) {
+func attachOrCreateNIC(ctx context.Context, s *stack.Stack, name, prefix string, linkCaps stack.LinkEndpointCapabilities, flags Flags) (*tunEndpoint, error) {
 	for {
 		// 1. Try to attach to an existing NIC.
-		if name != "" {
+		if name != "" && !flags.Exclusive {
 			if linkEP := s.GetLinkEndpointByName(name); linkEP != nil {
-				endpoint, ok := linkEP.(*tunEndpoint)
+				packetEndpoint, ok := linkEP.(*packetsocket.Endpoint)
+				if !ok {
+					// Not a NIC created by tun device.
+					return nil, linuxerr.EOPNOTSUPP
+				}
+				endpoint, ok := packetEndpoint.Child().(*tunEndpoint)
 				if !ok {
 					// Not a NIC created by tun device.
 					return nil, linuxerr.EOPNOTSUPP
@@ -160,9 +179,14 @@ func attachOrCreateNIC(s *stack.Stack, name, prefix string, linkCaps stack.LinkE
 		case nil:
 			return endpoint, nil
 		case *tcpip.ErrDuplicateNICID:
-			// Race detected: A NIC has been created in between.
-			continue
+			endpoint.DecRef(ctx)
+			if !flags.Exclusive {
+				// Race detected: A NIC has been created in between.
+				continue
+			}
+			return nil, linuxerr.EEXIST
 		default:
+			endpoint.DecRef(ctx)
 			return nil, linuxerr.EINVAL
 		}
 	}
@@ -332,21 +356,64 @@ func (d *Device) WriteNotify() {
 //
 // It is ref-counted as multiple opening files can attach to the same NIC.
 // The last owner is responsible for deleting the NIC.
+//
+// +stateify savable
 type tunEndpoint struct {
 	tunEndpointRefs
 	*channel.Endpoint
 
-	stack *stack.Stack
-	nicID tcpip.NICID
-	name  string
-	isTap bool
+	stack      *stack.Stack
+	nicID      tcpip.NICID
+	name       string
+	isTap      bool
+	persistent atomicbitops.Bool
+	closed     atomicbitops.Bool
+
+	mu            endpointMutex `state:"nosave"`
+	onCloseAction func()        `state:"nosave"`
+}
+
+func (e *tunEndpoint) setPersistent(v bool) {
+	old := e.persistent.Swap(v)
+	if old == v {
+		return
+	}
+	if v {
+		e.IncRef()
+	} else {
+		e.DecRef(context.Background())
+	}
+}
+
+func (e *tunEndpoint) Close() {
+	if e.closed.Swap(true) {
+		return
+	}
+
+	if e.persistent.Load() {
+		e.DecRef(context.Background())
+	}
+	e.mu.Lock()
+	action := e.onCloseAction
+	e.onCloseAction = nil
+	e.mu.Unlock()
+	if action != nil {
+		action()
+	}
+	e.Endpoint.Close()
+}
+
+// SetOnCloseAction implements stack.LinkEndpoint.
+func (e *tunEndpoint) SetOnCloseAction(action func()) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.onCloseAction = action
 }
 
 // DecRef decrements refcount of e, removing NIC if it reaches 0.
 func (e *tunEndpoint) DecRef(ctx context.Context) {
 	e.tunEndpointRefs.DecRef(func() {
 		e.Close()
-		e.stack.RemoveNIC(e.nicID)
 	})
 }
 

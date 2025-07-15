@@ -18,6 +18,7 @@
 package fdbased
 
 import (
+	"context"
 	"encoding/binary"
 
 	"gvisor.dev/gvisor/pkg/rand"
@@ -30,8 +31,9 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack/gro"
 )
 
+// +stateify savable
 type processor struct {
-	mu sync.Mutex
+	mu processorMutex `state:"nosave"`
 	// +checklocks:mu
 	pkts stack.PacketBufferList
 
@@ -83,10 +85,12 @@ func (p *processor) deliverPackets() {
 
 // processorManager handles starting, closing, and queuing packets on processor
 // goroutines.
+//
+// +stateify savable
 type processorManager struct {
 	processors []processor
 	seed       uint32
-	wg         sync.WaitGroup
+	wg         sync.WaitGroup `state:"nosave"`
 	e          *endpoint
 	ready      []bool
 }
@@ -123,6 +127,12 @@ func (m *processorManager) start() {
 	}
 }
 
+// afterLoad is invoked by stateify.
+func (m *processorManager) afterLoad(context.Context) {
+	m.wg.Add(len(m.processors))
+	m.start()
+}
+
 func (m *processorManager) connectionHash(cid *connectionID) uint32 {
 	var payload [4]byte
 	binary.LittleEndian.PutUint16(payload[0:], cid.srcPort)
@@ -157,8 +167,7 @@ func (m *processorManager) queuePacket(pkt *stack.PacketBuffer, hasEthHeader boo
 	p := &m.processors[pIdx]
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	pkt.IncRef()
-	p.pkts.PushBack(pkt)
+	p.pkts.PushBack(pkt.IncRef())
 	m.ready[pIdx] = true
 }
 

@@ -49,6 +49,7 @@ func (f *Flags) StateFields() []string {
 		"TUN",
 		"TAP",
 		"NoPacketInfo",
+		"Exclusive",
 	}
 }
 
@@ -60,6 +61,7 @@ func (f *Flags) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(0, &f.TUN)
 	stateSinkObject.Save(1, &f.TAP)
 	stateSinkObject.Save(2, &f.NoPacketInfo)
+	stateSinkObject.Save(3, &f.Exclusive)
 }
 
 func (f *Flags) afterLoad(context.Context) {}
@@ -69,6 +71,53 @@ func (f *Flags) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &f.TUN)
 	stateSourceObject.Load(1, &f.TAP)
 	stateSourceObject.Load(2, &f.NoPacketInfo)
+	stateSourceObject.Load(3, &f.Exclusive)
+}
+
+func (e *tunEndpoint) StateTypeName() string {
+	return "pkg/tcpip/link/tun.tunEndpoint"
+}
+
+func (e *tunEndpoint) StateFields() []string {
+	return []string{
+		"tunEndpointRefs",
+		"Endpoint",
+		"stack",
+		"nicID",
+		"name",
+		"isTap",
+		"persistent",
+		"closed",
+	}
+}
+
+func (e *tunEndpoint) beforeSave() {}
+
+// +checklocksignore
+func (e *tunEndpoint) StateSave(stateSinkObject state.Sink) {
+	e.beforeSave()
+	stateSinkObject.Save(0, &e.tunEndpointRefs)
+	stateSinkObject.Save(1, &e.Endpoint)
+	stateSinkObject.Save(2, &e.stack)
+	stateSinkObject.Save(3, &e.nicID)
+	stateSinkObject.Save(4, &e.name)
+	stateSinkObject.Save(5, &e.isTap)
+	stateSinkObject.Save(6, &e.persistent)
+	stateSinkObject.Save(7, &e.closed)
+}
+
+func (e *tunEndpoint) afterLoad(context.Context) {}
+
+// +checklocksignore
+func (e *tunEndpoint) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &e.tunEndpointRefs)
+	stateSourceObject.Load(1, &e.Endpoint)
+	stateSourceObject.Load(2, &e.stack)
+	stateSourceObject.Load(3, &e.nicID)
+	stateSourceObject.Load(4, &e.name)
+	stateSourceObject.Load(5, &e.isTap)
+	stateSourceObject.Load(6, &e.persistent)
+	stateSourceObject.Load(7, &e.closed)
 }
 
 func (r *tunEndpointRefs) StateTypeName() string {
@@ -98,5 +147,6 @@ func (r *tunEndpointRefs) StateLoad(ctx context.Context, stateSourceObject state
 func init() {
 	state.Register((*Device)(nil))
 	state.Register((*Flags)(nil))
+	state.Register((*tunEndpoint)(nil))
 	state.Register((*tunEndpointRefs)(nil))
 }

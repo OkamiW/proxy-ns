@@ -44,6 +44,8 @@ type ResponseWriter interface {
 	LocalAddr() net.Addr
 	// RemoteAddr returns the net.Addr of the client that sent the current request.
 	RemoteAddr() net.Addr
+	// Network returns the value of the Net field of the Server (e.g., "tcp", "tcp-tls").
+	Network() string
 	// WriteMsg writes a reply back to the client.
 	WriteMsg(*Msg) error
 	// Write writes a raw buffer back to the client.
@@ -77,6 +79,7 @@ type response struct {
 	udpSession     *SessionUDP    // oob data to get egress interface right
 	pcSession      net.Addr       // address to use when writing to a generic net.PacketConn
 	writer         Writer         // writer to output the raw DNS bits
+	network        string         // corresponding Server.Net value
 }
 
 // handleRefused returns a HandlerFunc that returns REFUSED for every request it gets.
@@ -226,6 +229,7 @@ type Server struct {
 	// If NotifyStartedFunc is set it is called once the server has started listening.
 	NotifyStartedFunc func()
 	// DecorateReader is optional, allows customization of the process that reads raw DNS messages.
+	// The decorated reader must not mutate the data read from the conn.
 	DecorateReader DecorateReader
 	// DecorateWriter is optional, allows customization of the process that writes raw DNS messages.
 	DecorateWriter DecorateWriter
@@ -331,7 +335,7 @@ func (srv *Server) ListenAndServe() error {
 		return srv.serveTCP(l)
 	case "tcp-tls", "tcp4-tls", "tcp6-tls":
 		if srv.TLSConfig == nil || (len(srv.TLSConfig.Certificates) == 0 && srv.TLSConfig.GetCertificate == nil) {
-			return errors.New("dns: neither Certificates nor GetCertificate set in Config")
+			return errors.New("neither Certificates nor GetCertificate set in config")
 		}
 		network := strings.TrimSuffix(srv.Net, "-tls")
 		l, err := listenTCP(network, addr, srv.ReusePort, srv.ReuseAddr)
@@ -556,7 +560,7 @@ func (srv *Server) serveUDP(l net.PacketConn) error {
 
 // Serve a new TCP connection.
 func (srv *Server) serveTCPConn(wg *sync.WaitGroup, rw net.Conn) {
-	w := &response{tsigProvider: srv.tsigProvider(), tcp: rw}
+	w := &response{tsigProvider: srv.tsigProvider(), tcp: rw, network: srv.Net}
 	if srv.DecorateWriter != nil {
 		w.writer = srv.DecorateWriter(w)
 	} else {
@@ -611,7 +615,7 @@ func (srv *Server) serveTCPConn(wg *sync.WaitGroup, rw net.Conn) {
 
 // Serve a new UDP request.
 func (srv *Server) serveUDPPacket(wg *sync.WaitGroup, m []byte, u net.PacketConn, udpSession *SessionUDP, pcSession net.Addr) {
-	w := &response{tsigProvider: srv.tsigProvider(), udp: u, udpSession: udpSession, pcSession: pcSession}
+	w := &response{tsigProvider: srv.tsigProvider(), udp: u, udpSession: udpSession, pcSession: pcSession, network: srv.Net}
 	if srv.DecorateWriter != nil {
 		w.writer = srv.DecorateWriter(w)
 	} else {
@@ -816,6 +820,9 @@ func (w *response) RemoteAddr() net.Addr {
 		panic("dns: internal error: udpSession, pcSession and tcp are all nil")
 	}
 }
+
+// Network implements the ResponseWriter.Network method.
+func (w *response) Network() string { return w.network }
 
 // TsigStatus implements the ResponseWriter.TsigStatus method.
 func (w *response) TsigStatus() error { return w.tsigStatus }
