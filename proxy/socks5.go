@@ -206,6 +206,64 @@ type endpoint struct {
 	targetAddr string
 }
 
+func newSocketBuffer(timeout time.Duration) *socketBuffer {
+	s := &socketBuffer{
+		timeout: timeout,
+	}
+	s.notifyCh.Store(make(chan struct{}))
+	return s
+}
+
+type socketBuffer struct {
+	packets  [][]byte
+	mutex    sync.Mutex
+	notifyCh atomic.Value // chan struct{}
+	timeout  time.Duration
+}
+
+func (s *socketBuffer) Notify() {
+	old := s.notifyCh.Swap(make(chan struct{}))
+	close(old.(chan struct{}))
+}
+
+func (s *socketBuffer) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	s.mutex.Lock()
+	s.packets = append(s.packets, slices.Clone(p))
+	s.mutex.Unlock()
+
+	s.Notify()
+	return n, err
+}
+
+func (s *socketBuffer) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	for {
+		s.mutex.Lock()
+		if len(s.packets) == 0 {
+			s.mutex.Unlock()
+			select {
+			case <-s.notifyCh.Load().(chan struct{}):
+				continue
+			case <-time.After(s.timeout):
+				return 0, context.DeadlineExceeded
+			}
+		}
+		packet := s.packets[0]
+		if len(p) >= len(packet) {
+			s.packets = s.packets[1:]
+		} else {
+			s.packets[0] = s.packets[0][len(p):]
+		}
+		s.mutex.Unlock()
+		return copy(p, packet), nil
+	}
+}
+
 func (c *muxedPacketConn) poll() {
 	buf := make([]byte, network.MaxPacketSize)
 	for {
@@ -224,7 +282,7 @@ func (c *muxedPacketConn) poll() {
 		}
 		value, ok := c.packets.Load(ep)
 		if ok {
-			value.(chan []byte) <- slices.Clone(payload)
+			value.(*socketBuffer).Write(payload)
 		} else {
 			fmt.Fprintln(os.Stderr, "Dropped unrelated packet from:", addr, target)
 		}
@@ -236,14 +294,9 @@ func (c *muxedPacketConn) ReadFrom(p []byte, relayAddr net.Addr, target socks5.A
 		relayAddr:  relayAddr.String(),
 		targetAddr: target.String(),
 	}
-	actual, _ := c.packets.LoadOrStore(ep, make(chan []byte))
+	actual, _ := c.packets.LoadOrStore(ep, newSocketBuffer(config.UDPSessionTimeout))
 	go c.once.Do(c.poll)
-	select {
-	case buf := <-actual.(chan []byte):
-		return copy(p, buf), nil
-	case <-time.After(config.UDPSessionTimeout):
-		return 0, context.DeadlineExceeded
-	}
+	return actual.(*socketBuffer).Read(p)
 }
 
 func (c *muxedPacketConn) WriteTo(p []byte, relayAddr net.Addr, target socks5.Addr) (n int, err error) {
