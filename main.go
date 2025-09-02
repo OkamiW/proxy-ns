@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"syscall"
 	"unsafe"
 
@@ -73,7 +74,10 @@ func main() {
 	socks5Address := flag.String("socks5-address", "", "")
 	username := flag.String("username", "", "")
 	password := flag.String("password", "", "")
-	fakeDns := flag.Bool("fake-dns", true, "")
+	// See https://pkg.go.dev/flag
+	// Boolean flags are not permitted to be written in the form
+	// like "--fake-dns false"
+	fakeDns := flag.String("fake-dns", "true", "")
 	fakeNetwork := flag.String("fake-network", "", "")
 	dnsServer := flag.String("dns-server", "", "")
 	udpSessionTimeout := flag.Duration("udp-session-timeout", config.UDPSessionTimeout, "")
@@ -136,7 +140,12 @@ func main() {
 		data.Password = password
 	}
 	if isFlagPresent("fake-dns") {
-		data.FakeDNS = fakeDns
+		fakeDnsBool, err := strconv.ParseBool(*fakeDns)
+		if err != nil {
+			usage()
+			os.Exit(1)
+		}
+		data.FakeDNS = &fakeDnsBool
 	}
 	if isFlagPresent("fake-network") {
 		data.FakeNetwork = fakeNetwork
