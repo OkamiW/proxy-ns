@@ -154,7 +154,8 @@ func main() {
 		data.DNSServer = dnsServer
 	}
 	if isFlagPresent("udp-session-timeout") {
-		data.UDPSessionTimeout = udpSessionTimeout
+		s := udpSessionTimeout.String()
+		data.UDPSessionTimeout = &s
 	}
 	err = cfg.Update(data)
 	if err != nil {

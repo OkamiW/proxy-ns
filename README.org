@@ -6,6 +6,7 @@ program to use your SOCKS5 proxy server.
 It has several advantages over =proxychains=:
 - Support both TCP and UDP
 - Work for statically linked programs
+- Support Endpoint Independent Mapping(Full cone NAT) for UDP ASSOCIATE
 
 ** Installation
 *** Arch Linux
@@ -40,7 +41,8 @@ If your SOCKS5 server has authentication, set =username= and
     "password": "",
     "fake_dns": true,
     "fake_network": "240.0.0.0/4",
-    "dns_server": "9.9.9.9"
+    "dns_server": "9.9.9.9",
+    "udp_session_timeout": "1m0s"
   }
 #+end_src
 
@@ -106,6 +108,9 @@ latency. But it has its own limitations:
   work as expected(e.g. =dig=, =geoiplookup=).
 - Some programs may not use your system DNS resolver. FakeDNS won't
   work for them.
+- Many SOCKS5 servers doesn't support =AtypDomainName= for UDP ASSOCIATE.
+  If you enable FakeDNS, all UDP packets to domains will be dropped.
+  (e.g. DNS may still work, but QUIC probably won't.)
 
 ** Notes on capabilities
 - =cap_sys_admin= is for =setns= system call.

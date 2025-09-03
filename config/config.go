@@ -9,21 +9,19 @@ import (
 	"time"
 )
 
-var (
-	UDPSessionTimeout = time.Minute
-)
+var UDPSessionTimeout = time.Minute
 
 type Data struct {
-	TunName           *string        `json:"tun_name,omitempty"`
-	TunIP             *string        `json:"tun_ip,omitempty"`
-	TunIP6            *string        `json:"tun_ip6,omitempty"`
-	Socks5Address     *string        `json:"socks5_address,omitempty"`
-	Username          *string        `json:"username,omitempty"`
-	Password          *string        `json:"password,omitempty"`
-	FakeDNS           *bool          `json:"fake_dns,omitempty"`
-	FakeNetwork       *string        `json:"fake_network,omitempty"`
-	DNSServer         *string        `json:"dns_server,omitempty"`
-	UDPSessionTimeout *time.Duration `json:"udp_session_timeout,omitempty"`
+	TunName           *string `json:"tun_name,omitempty"`
+	TunIP             *string `json:"tun_ip,omitempty"`
+	TunIP6            *string `json:"tun_ip6,omitempty"`
+	Socks5Address     *string `json:"socks5_address,omitempty"`
+	Username          *string `json:"username,omitempty"`
+	Password          *string `json:"password,omitempty"`
+	FakeDNS           *bool   `json:"fake_dns,omitempty"`
+	FakeNetwork       *string `json:"fake_network,omitempty"`
+	DNSServer         *string `json:"dns_server,omitempty"`
+	UDPSessionTimeout *string `json:"udp_session_timeout,omitempty"`
 }
 
 type Config struct {
@@ -105,7 +103,11 @@ func (cfg *Config) Update(data Data) error {
 		cfg.DNSServer = *data.DNSServer
 	}
 	if data.UDPSessionTimeout != nil {
-		cfg.UDPSessionTimeout = *data.UDPSessionTimeout
+		duration, err := time.ParseDuration(*data.UDPSessionTimeout)
+		if err != nil {
+			return fmt.Errorf("Invalid udp session timeout: %s", *data.UDPSessionTimeout)
+		}
+		cfg.UDPSessionTimeout = duration
 	}
 	return nil
 }
