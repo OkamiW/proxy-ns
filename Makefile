@@ -9,9 +9,13 @@ all: proxy-ns proxy-ns-doc
 proxy-ns:
 	go build -ldflags '-X main.SysConfDir=$(sysconfdir)' -trimpath -o $@
 
-proxy-ns-doc:
-	scdoc < doc/proxy-ns.1.scd > doc/proxy-ns.1
-	scdoc < doc/proxy-ns.5.scd > doc/proxy-ns.5
+proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
+
+doc/proxy-ns.1: doc/proxy-ns.1.scd
+	scdoc < doc/proxy-ns.1.scd > $@
+
+doc/proxy-ns.5: doc/proxy-ns.5.scd
+	scdoc < doc/proxy-ns.5.scd > $@
 
 install: proxy-ns
 	install -Dm 755 proxy-ns $(DESTDIR)$(bindir)/proxy-ns
