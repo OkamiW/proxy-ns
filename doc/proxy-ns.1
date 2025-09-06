@@ -5,7 +5,7 @@
 .nh
 .ad l
 .\" Begin generated content:
-.TH "proxy-ns" "1" "2025-09-03"
+.TH "proxy-ns" "1" "2025-09-06"
 .PP
 .SH NAME
 .PP
@@ -26,7 +26,7 @@ Path to configuration file, see \fBproxy-ns\fR(5) for details.\&
 .RE
 \fB-q\fR
 .RS 4
-Quiet mode.\&
+Quiet mode.\& By default, proxy-ns prints errors to standard error, this option makes proxy-ns redirects standard error to /dev/null at startup.\&
 .PP
 .RE
 \fB-h\fR, \fB--help\fR
@@ -51,6 +51,9 @@ Set TUN device IPv4 address.\&
 .RS 4
 Set TUN device IPv6 address.\&
 .PP
+Setting this option enables IPv6 default route in proxy-ns network namespace.\&
+Only set this option if your SOCKS5 server has IPv6 connectivity.\&
+.PP
 .RE
 \fB--socks5-address\fR=\fISOCKS5_ADDRESS\fR
 .RS 4
@@ -69,17 +72,21 @@ Set the password of the specified SOCKS5 server.\&
 .RE
 \fB--fake-dns\fR=\fIBOOL\fR
 .RS 4
-Enable or disable fake DNS.\&
+Enable or disable fake DNS.\& See \fBNOTES ON FAKEDNS\fR for more details.\&
 .PP
 .RE
 \fB--fake-network\fR=\fIFAKE_NETWORK\fR
 .RS 4
 Set the network used for fake DNS.\&
 .PP
+If \fBfake-dns\fR is enabled, and programs in proxy-ns network namespace makes a DNS request, an IP address from \fBfake-network\fR will be returned as response.\& The relationship between the domain name in request and the IP address returned will be saved, further accesses to the IP address will be recognized as accesses to the saved DNS name.\&
+.PP
 .RE
 \fB--dns-server\fR=\fIDNS_SERVER\fR
 .RS 4
 Set DNS server.\&
+.PP
+DNS server used to resolve domain names.\& When \fBfake-dns\fR is enabled, it'\&s only used for DNS requests \fBfake-dns\fR cannot handle: DNS message types other than A and AAAA.\&
 .PP
 .RE
 \fB--udp-session-timeout\fR=\fIUDP_SESSION_TIMEOUT\fR
@@ -116,26 +123,36 @@ Set UDP session timeout.\&
 All capabilities are dropped permanently before the program'\&s main loop.\&
 .PP
 .SH NOTES ON FAKEDNS
-FakeDNS can be used to avoid a separate DNS roundtrip, thus improving
-latency.\& But it has its own limitations:
+Advantages of FakeDNS:
+.PD 0
+.IP \(bu 4
+Avoid an extra roundtrip for DNS.\&
+.PD
 .PP
 .PD 0
 .IP \(bu 4
-All domains are resolved to \fBfake_network\fR, some programs may not
+Resolve DNS even when SOCKS5 server doesn'\&t support UDP ASSOCIATE.\&
+.PD
+.PP
+Disadvantages of FakeDNS:
+.PD 0
+.IP \(bu 4
+All domain names are resolved to \fBfake_network\fR, some programs may not
 work as expected(e.\&g.\& \fBdig\fR, \fBgeoiplookup\fR).\&
 .PD
 .PP
 .PD 0
 .IP \(bu 4
-Some programs may not use your system DNS resolver.\& FakeDNS won'\&t
-work for them.\&
+Many SOCKS5 servers doesn'\&t support \fBAtypDomainName\fR for UDP ASSOCIATE.\&
+If you enable FakeDNS, all UDP packets to domain names will be dropped.\&
+(e.\&g.\& DNS may still work, but QUIC probably won'\&t.\&)
 .PD
 .PP
+Caveats:
 .PD 0
 .IP \(bu 4
-Many SOCKS5 servers doesn'\&t support \fBAtypDomainName\fR for UDP ASSOCIATE.\&
-If you enable FakeDNS, all UDP packets to domains will be dropped.\&
-(e.\&g.\& DNS may still work, but QUIC probably won'\&t.\&)
+Some programs may not use your system DNS resolver.\& FakeDNS won'\&t
+work for them.\&
 .PD
 .PP
 .SH NOTES ON FORKING PROGRAMS
