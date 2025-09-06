@@ -8,8 +8,7 @@ proxy-ns - configuration file for *proxy-ns*(1)
 
 *proxy-ns* uses JSON format for configuration. You can find the location of configuration file by running *proxy-ns --help*.
 
-*proxy-ns* ships with sensible configuration by default.
-In most cases, you only need to change *socks5_address*.
+*proxy-ns* ships with sensible configuration by default. In most cases, you only need to change *socks5_address*.
 
 # CONFIGURATION
 *tun_name* (required)
@@ -21,8 +20,7 @@ In most cases, you only need to change *socks5_address*.
 *tun_ip6* (optional)
 	Set TUN device IPv6 address. (e.g. fc00::1/7)
 
-	Setting this option enables IPv6 default route in proxy-ns network namespace.
-	Only set this option if your SOCKS5 server has IPv6 connectivity.
+	Setting this option enables IPv6 default route in proxy-ns network namespace. Only set this option if your SOCKS5 server has IPv6 connectivity.
 
 *socks5_address* (required)
 	Set SOCKS5 server address. (e.g. 127.0.0.1:1080)
@@ -56,16 +54,12 @@ Advantages of FakeDNS:
 - Resolve DNS even when SOCKS5 server doesn't support UDP ASSOCIATE.
 
 Disadvantages of FakeDNS:
-- All domain names are resolved to *fake_network*, some programs may not
-  work as expected(e.g. *dig*, *geoiplookup*).
+- All domain names are resolved to *fake_network*, some programs may not work as expected(e.g. *dig*, *geoiplookup*).
 
-- Many SOCKS5 servers doesn't support *AtypDomainName* for UDP ASSOCIATE.
-  If you enable FakeDNS, all UDP packets to domain names will be dropped.
-  (e.g. DNS may still work, but QUIC probably won't.)
+- Many SOCKS5 servers doesn't support *AtypDomainName* for UDP ASSOCIATE. If you enable FakeDNS, all UDP packets to domain names will be dropped. (e.g. DNS may still work, but QUIC probably won't.)
 
 Caveats:
-- Some programs may not use your system DNS resolver. FakeDNS won't
-  work for them.
+- Some programs may not use your system DNS resolver. FakeDNS won't work for them.
 
 # SEE ALSO
 *proxy-ns*(1)

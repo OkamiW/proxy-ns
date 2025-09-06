@@ -33,8 +33,7 @@ These options override settings in the configuration file:
 *--tun-ip6*=_TUN_IP6_
 	Set TUN device IPv6 address.
 
-	Setting this option enables IPv6 default route in proxy-ns network namespace.
-	Only set this option if your SOCKS5 server has IPv6 connectivity.
+	Setting this option enables IPv6 default route in proxy-ns network namespace. Only set this option if your SOCKS5 server has IPv6 connectivity.
 
 *--socks5-address*=_SOCKS5_ADDRESS_
 	Set the SOCKS5 server to use.
@@ -81,16 +80,12 @@ Advantages of FakeDNS:
 - Resolve DNS even when SOCKS5 server doesn't support UDP ASSOCIATE.
 
 Disadvantages of FakeDNS:
-- All domain names are resolved to *fake_network*, some programs may not
-  work as expected(e.g. *dig*, *geoiplookup*).
+- All domain names are resolved to *fake_network*, some programs may not work as expected(e.g. *dig*, *geoiplookup*).
 
-- Many SOCKS5 servers doesn't support *AtypDomainName* for UDP ASSOCIATE.
-  If you enable FakeDNS, all UDP packets to domain names will be dropped.
-  (e.g. DNS may still work, but QUIC probably won't.)
+- Many SOCKS5 servers doesn't support *AtypDomainName* for UDP ASSOCIATE. If you enable FakeDNS, all UDP packets to domain names will be dropped. (e.g. DNS may still work, but QUIC probably won't.)
 
 Caveats:
-- Some programs may not use your system DNS resolver. FakeDNS won't
-  work for them.
+- Some programs may not use your system DNS resolver. FakeDNS won't work for them.
 
 # NOTES ON FORKING PROGRAMS
 proxy-ns daemon program exits as the command exits, so if you start a forking program in proxy-ns, it will lose network connection.
