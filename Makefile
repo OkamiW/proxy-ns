@@ -7,6 +7,9 @@ sysconfdir  = $(prefix)/etc
 all: proxy-ns proxy-ns-doc
 
 proxy-ns:
+	@# AllThreadsSyscall is unaware of any threads that are launched
+	@# explicitly by cgo linked code, so the function always returns
+	@# [ENOTSUP] in binaries that use cgo.
 	CGO_ENABLED=0 go build -ldflags '-buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o $@
 
 proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
