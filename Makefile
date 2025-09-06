@@ -7,7 +7,7 @@ sysconfdir  = $(prefix)/etc
 all: proxy-ns proxy-ns-doc
 
 proxy-ns:
-	go build -ldflags '-X main.SysConfDir=$(sysconfdir)' -trimpath -o $@
+	CGO_ENABLED=0 go build -ldflags '-buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o $@
 
 proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
 
