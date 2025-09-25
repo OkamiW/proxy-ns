@@ -10,7 +10,7 @@ all: proxy-ns proxy-ns-doc
 # explicitly by cgo linked code, so the function always returns
 # [ENOTSUP] in binaries that use cgo.
 proxy-ns:
-	CGO_ENABLED=0 go build -ldflags '-buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o $@
+	CGO_ENABLED=0 go build -ldflags '-buildmode=pie -buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o $@
 
 proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
 
