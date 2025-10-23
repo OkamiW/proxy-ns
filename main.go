@@ -7,13 +7,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
 	"syscall"
 	"unsafe"
 
+	"proxy-ns/buildconfig"
 	"proxy-ns/config"
 	"proxy-ns/fakedns"
 	"proxy-ns/proxy"
@@ -22,11 +22,6 @@ import (
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
-)
-
-var (
-	SysConfDir = "/etc"
-	ConfigPath = filepath.Join(SysConfDir, "proxy-ns/config.json")
 )
 
 type Data struct {
@@ -53,7 +48,7 @@ These options override settings in config file:
   --fake-network=<NETWORK>                     Set network used for fake DNS
   --dns-server=<DNS_SERVER>                    Set DNS server(only available when fake DNS is disabled)
   --udp-session-timeout=<UDP_SESSION_TIMEOUT>  Set UDP session timeout (optional) (Default: %s)
-`, os.Args[0], ConfigPath, config.UDPSessionTimeout)
+`, os.Args[0], buildconfig.ConfigPath, config.UDPSessionTimeout)
 }
 
 func isFlagPresent(name string) (present bool) {
@@ -67,7 +62,7 @@ func isFlagPresent(name string) (present bool) {
 
 func main() {
 	quietMode := flag.Bool("q", false, "")
-	cfgPath := flag.String("c", ConfigPath, "")
+	cfgPath := flag.String("c", buildconfig.ConfigPath, "")
 	tunName := flag.String("tun-name", "", "")
 	tunIp := flag.String("tun-ip", "", "")
 	tunIp6 := flag.String("tun-ip6", "", "")

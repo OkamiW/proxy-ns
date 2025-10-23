@@ -4,13 +4,16 @@ datadir     = $(prefix)/share
 bindir      = $(exec_prefix)/bin
 sysconfdir  = $(prefix)/etc
 
+GO_LDFLAGS = -buildid= -buildmode=pie -X proxy-ns/buildconfig.SysConfDir=$(sysconfdir)
+GO_FLAGS   = -buildvcs=false -trimpath -ldflags="$(GO_LDFLAGS)"
+
 all: proxy-ns proxy-ns-doc
 
 # AllThreadsSyscall is unaware of any threads that are launched
 # explicitly by cgo linked code, so the function always returns
 # [ENOTSUP] in binaries that use cgo.
 proxy-ns:
-	CGO_ENABLED=0 go build -ldflags '-buildmode=pie -buildid= -X main.SysConfDir=$(sysconfdir)' -buildvcs=false -trimpath -o $@
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@
 
 proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
 
