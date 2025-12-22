@@ -27,13 +27,13 @@ const (
 func (c Command) String() string {
 	switch c {
 	case CmdConnect:
-		return "CONNECT"
+		return "connect"
 	case CmdBind:
-		return "BIND"
+		return "bind"
 	case CmdUDPAssociate:
-		return "UDP ASSOCIATE"
+		return "udp-associate"
 	default:
-		return "UNDEFINED"
+		return "undefined"
 	}
 }
 
@@ -225,7 +225,7 @@ func ClientHandshake(rw io.ReadWriter, addr Addr, command Command, auth *Auth) (
 	}
 
 	if rep := Reply(buf[1]); rep != 0x00 /* SUCCEEDED */ {
-		return nil, fmt.Errorf("%s: %s", command, rep)
+		return nil, errors.New(rep.String())
 	}
 
 	return readAddr(rw, buf)
