@@ -7,7 +7,7 @@ sysconfdir  = $(prefix)/etc
 GO_LDFLAGS = -buildid= -buildmode=pie -X proxy-ns/buildconfig.SysConfDir=$(sysconfdir)
 GO_FLAGS   = -buildvcs=false -trimpath -ldflags="$(GO_LDFLAGS)"
 
-all: proxy-ns proxy-ns-doc
+all: proxy-ns
 
 # AllThreadsSyscall is unaware of any threads that are launched
 # explicitly by cgo linked code, so the function always returns
@@ -15,19 +15,11 @@ all: proxy-ns proxy-ns-doc
 proxy-ns:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@
 
-proxy-ns-doc: doc/proxy-ns.1 doc/proxy-ns.5
-
-doc/proxy-ns.1: doc/proxy-ns.1.scd
-	scdoc < doc/proxy-ns.1.scd > $@
-
-doc/proxy-ns.5: doc/proxy-ns.5.scd
-	scdoc < doc/proxy-ns.5.scd > $@
-
 install: proxy-ns
 	install -Dm 755 proxy-ns $(DESTDIR)$(bindir)/proxy-ns
 	setcap cap_sys_admin,cap_net_admin,cap_net_bind_service,cap_sys_chroot,cap_chown=ep $(DESTDIR)$(bindir)/proxy-ns
 
-install-doc: proxy-ns-doc
+install-doc:
 	install -Dm 644 doc/proxy-ns.1 $(DESTDIR)$(datadir)/man/man1/proxy-ns.1
 	install -Dm 644 doc/proxy-ns.5 $(DESTDIR)$(datadir)/man/man5/proxy-ns.5
 
@@ -36,7 +28,5 @@ install-config:
 
 clean:
 	rm -f proxy-ns
-	rm -f doc/proxy-ns.1
-	rm -f doc/proxy-ns.5
 
 .PHONY: all proxy-ns proxy-ns-doc install install-doc install-config clean

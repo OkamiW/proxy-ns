@@ -1,0 +1,82 @@
+.TH PROXY-NS 5 2026-01-06
+.SH NAME
+proxy-ns - configuration file for
+.B proxy-ns(1)
+.SH DESCRIPTION
+.B proxy-ns
+uses JSON format for configuration. You can find the location of configuration file by running
+.B proxy-ns --help.
+
+.B proxy-ns
+ships with sensible configuration by default. In most cases, you only need to change
+.B socks5_address.
+.SH CONFIGURATION
+.TP
+.B tun_name (required)
+Set TUN device name. (e.g. tun0)
+.TP
+.B tun_ip (required)
+Set TUN device IPv4 address. (e.g. 10.0.0.1/24)
+.TP
+.B tun_ip6 (optional)
+Set TUN device IPv6 address. (e.g. fc00::1/7)
+
+Setting this option enables IPv6 default route in proxy-ns network namespace. Only set this option if your SOCKS5 server has IPv6 connectivity.
+.TP
+.B socks5_address (required)
+Set SOCKS5 server address. (e.g. 127.0.0.1:1080)
+.TP
+.B username (optional)
+Set the username of the specified SOCKS5 server.
+.TP
+.B password (optional)
+Set the password of the specified SOCKS5 server.
+.TP
+.B fake_dns (required)
+Enable or disable fake DNS. See
+.B NOTES ON FAKEDNS
+for more details.
+.TP
+.B fake_network (required)
+Set the network used for fake DNS. (e.g. 240.0.0.0/4)
+
+If
+.B fake-dns
+is enabled, and programs in proxy-ns network namespace makes a DNS request, an IP address from
+.B fake-network
+will be returned as response. The relationship between the domain name in request and the IP address returned will be saved, further accesses to the IP address will be recognized as accesses to the saved DNS name.
+.TP
+.B dns_server (required)
+Set DNS server. (e.g. 9.9.9.9)
+
+DNS server used to resolve domain names. When
+.B fake-dns
+is enabled, it's only used for DNS requests
+.B fake-dns
+cannot handle: DNS message types other than A and AAAA.
+.TP
+.B udp_session_timeout (optional)
+Set UDP session timeout. (e.g. 1m0s)
+
+.SH NOTES ON FAKEDNS
+.SS Advantages of FakeDNS:
+.PP
+1. Avoid an extra roundtrip for DNS.
+.PP
+2. Resolve DNS even when SOCKS5 server doesn't support UDP ASSOCIATE.
+.SS Disadvantages of FakeDNS:
+.PP
+1. All domain names are resolved to
+.B fake_network
+, some programs may not work as expected(e.g. dig, geoiplookup).
+.PP
+2. Many SOCKS5 servers doesn't support
+.B AtypDomainName
+for UDP ASSOCIATE. If you enable FakeDNS, all UDP packets to domain names will be dropped.
+(e.g. DNS may still work, but QUIC probably won't.)
+.SS Caveats:
+1. Some programs may not use your system DNS resolver. FakeDNS won't work for them.
+
+.SH SEE ALSO
+
+.B proxy-ns(1)
