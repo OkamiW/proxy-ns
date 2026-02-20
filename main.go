@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -80,20 +81,20 @@ func main() {
 	flag.CommandLine.Usage = usage
 	flag.Parse()
 
+	log.SetFlags(0)
+	log.SetPrefix("proxy-ns: ")
+
 	if *quietMode {
 		devNull, err := os.Open("/dev/null")
 		if err != nil {
 			os.Exit(1)
 		}
-		err = unix.Dup2(int(devNull.Fd()), 2)
-		if err != nil {
-			os.Exit(1)
-		}
+		log.SetOutput(devNull)
 	}
 
 	if *daemon {
 		if err := runDaemon(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			log.Println(err)
 			os.Exit(1)
 		}
 		return
@@ -111,7 +112,7 @@ func main() {
 	)
 	cfg, err = config.FromFile(*cfgPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Println(err)
 		os.Exit(1)
 	}
 
@@ -154,12 +155,12 @@ func main() {
 	}
 	err = cfg.Update(data)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Println(err)
 		os.Exit(1)
 	}
 
 	if err := runMain(cfg, args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Println(err)
 		os.Exit(1)
 	}
 }
@@ -219,7 +220,7 @@ func runDaemon() error {
 		go func() {
 			err := fakeDNSServer.Run()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to start FakeDNS server: %s\n", err)
+				log.Printf("Failed to start FakeDNS server: %s\n", err)
 			}
 		}()
 	}

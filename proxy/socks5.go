@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
-	"os"
 	"slices"
 	"strconv"
 	"sync"
@@ -89,7 +89,7 @@ func (d *SOCKS5Client) Connect(address string) (net.Conn, error) {
 	addr, err := serializeAddr(address)
 	if err != nil {
 		return nil, &SOCKS5Error{
-			Cmd:   socks5.CmdConnect,
+			Cmd:  socks5.CmdConnect,
 			Addr: address,
 			Err:  fmt.Errorf("failed to serialize address: %w", err),
 		}
@@ -97,7 +97,7 @@ func (d *SOCKS5Client) Connect(address string) (net.Conn, error) {
 	conn, err := net.Dial(d.network, d.address)
 	if err != nil {
 		return nil, &SOCKS5Error{
-			Cmd:   socks5.CmdConnect,
+			Cmd:  socks5.CmdConnect,
 			Addr: address,
 			Err:  fmt.Errorf("failed to connect to %s: %w", d.address, err),
 		}
@@ -107,7 +107,7 @@ func (d *SOCKS5Client) Connect(address string) (net.Conn, error) {
 	if err != nil {
 		conn.Close()
 		return nil, &SOCKS5Error{
-			Cmd:   socks5.CmdConnect,
+			Cmd:  socks5.CmdConnect,
 			Addr: address,
 			Err:  fmt.Errorf("failed to perform client handshake: %w", err),
 		}
@@ -119,7 +119,7 @@ func (d *SOCKS5Client) UDPAssociate() (*SOCKS5UDPRelayClient, error) {
 	conn, err := net.Dial(d.network, d.address)
 	if err != nil {
 		return nil, &SOCKS5Error{
-			Cmd:  socks5.CmdUDPAssociate,
+			Cmd: socks5.CmdUDPAssociate,
 			Err: fmt.Errorf("failed to connect to %s: %w", d.address, err),
 		}
 	}
@@ -138,7 +138,7 @@ func (d *SOCKS5Client) UDPAssociate() (*SOCKS5UDPRelayClient, error) {
 	if err != nil {
 		conn.Close()
 		return nil, &SOCKS5Error{
-			Cmd:  socks5.CmdUDPAssociate,
+			Cmd: socks5.CmdUDPAssociate,
 			Err: fmt.Errorf("failed to perform client handshake: %w", err),
 		}
 	}
@@ -146,7 +146,7 @@ func (d *SOCKS5Client) UDPAssociate() (*SOCKS5UDPRelayClient, error) {
 	relayAddr := addr.UDPAddr()
 	if relayAddr == nil {
 		return nil, &SOCKS5Error{
-			Cmd:  socks5.CmdUDPAssociate,
+			Cmd: socks5.CmdUDPAssociate,
 			Err: fmt.Errorf("invalid UDP binding address: %#v", addr),
 		}
 	}
@@ -155,7 +155,7 @@ func (d *SOCKS5Client) UDPAssociate() (*SOCKS5UDPRelayClient, error) {
 		udpAddr, err := net.ResolveUDPAddr("udp", d.address)
 		if err != nil {
 			return nil, &SOCKS5Error{
-				Cmd:  socks5.CmdUDPAssociate,
+				Cmd: socks5.CmdUDPAssociate,
 				Err: fmt.Errorf("resolve udp address %s: %w", d.address, err),
 			}
 		}
@@ -203,7 +203,7 @@ func NewSOCKS5UDPRelayClient(tcpConn net.Conn, relayAddr net.Addr) (*SOCKS5UDPRe
 	pc, err := net.ListenPacket("udp", "0.0.0.0:0")
 	if err != nil {
 		return nil, &SOCKS5Error{
-			Cmd:  socks5.CmdUDPAssociate,
+			Cmd: socks5.CmdUDPAssociate,
 			Err: err,
 		}
 	}
@@ -218,7 +218,7 @@ func (r *SOCKS5UDPRelayClient) Dial(address string) (net.Conn, error) {
 	addr, err := serializeAddr(address)
 	if err != nil {
 		return nil, &SOCKS5Error{
-			Cmd:   socks5.CmdUDPAssociate,
+			Cmd:  socks5.CmdUDPAssociate,
 			Addr: address,
 			Err:  fmt.Errorf("failed to serialize address: %w", err),
 		}
@@ -333,7 +333,7 @@ func (c *muxedPacketConn) poll() {
 		}
 		target, payload, err := socks5.DecodeUDPPacket(buf[:n])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			log.Println(err)
 			continue
 		}
 		ep := endpoint{
@@ -344,7 +344,7 @@ func (c *muxedPacketConn) poll() {
 		if ok {
 			value.(*socketBuffer).Write(payload)
 		} else {
-			fmt.Fprintln(os.Stderr, "Dropped unrelated packet from:", addr, target)
+			log.Println("Dropped unrelated packet from:", addr, target)
 		}
 	}
 }

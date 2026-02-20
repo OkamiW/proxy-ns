@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -100,7 +100,7 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 
 		remoteConn, err := socks5Client.Connect(remoteAddrStr)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			log.Println(err)
 			r.Complete(true)
 			return
 		}
@@ -131,7 +131,7 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 		onceValue := sync.OnceValue(func() *proxy.SOCKS5UDPRelayClient {
 			relay, err := socks5Client.UDPAssociate()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				log.Println(err)
 				return nil
 			}
 			relay.SetFinalizer(func() {
@@ -167,7 +167,7 @@ func manageTun(mtu uint32, fd int, socks5Client *proxy.SOCKS5Client, fakeDNSServ
 		}
 		remoteConn, err := relay.Dial(remoteAddrStr)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			log.Println(err)
 			return false
 		}
 		go forwardConn(originConn, remoteConn, copyPacketData)
