@@ -167,7 +167,7 @@ func main() {
 
 func dropCapabilities() error {
 	hdr := &unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
-	data := &unix.CapUserData{}
+	data := &[2]unix.CapUserData{}
 	if _, _, e1 := syscall.AllThreadsSyscall6(unix.SYS_CAPSET, uintptr(unsafe.Pointer(hdr)), uintptr(unsafe.Pointer(data)), 0, 0, 0, 0); e1 != 0 {
 		return fmt.Errorf("Failed to capset: %s", e1)
 	}
