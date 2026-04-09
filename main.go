@@ -242,6 +242,8 @@ func runDaemon() error {
 			continue
 		case nil:
 			return nil
+		default:
+			return fmt.Errorf("Failed to poll: %w", err)
 		}
 	}
 }
