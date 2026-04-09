@@ -60,6 +60,7 @@ func (s *Server) NameFromIP(ip net.IP) (name string) {
 func (s *Server) reset() {
 	s.next.Store(s.min - 1)
 	s.mapping = sync.Map{}
+	s.reversedMapping = sync.Map{}
 }
 
 func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
