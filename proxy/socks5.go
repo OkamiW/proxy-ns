@@ -344,7 +344,8 @@ func (c *muxedPacketConn) poll() {
 		if ok {
 			value.(*socketBuffer).Write(payload)
 		} else {
-			log.Println("Dropped unrelated packet from:", addr, target)
+			// gvisor's udp.NewForwarder cannot handle unrelated packet.
+			log.Println("Failed to associate packet from:", ep.targetAddr)
 		}
 	}
 }
