@@ -295,7 +295,7 @@ func (s *socketBuffer) Write(p []byte) (n int, err error) {
 	s.mutex.Unlock()
 
 	s.Notify()
-	return n, err
+	return len(p), nil
 }
 
 func (s *socketBuffer) Read(p []byte) (n int, err error) {
