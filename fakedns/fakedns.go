@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"net"
 	"sync"
-	"sync/atomic"
 
 	"proxy-ns/proxy"
 
@@ -19,13 +18,16 @@ func NewServer(packetConn net.PacketConn, dialer proxy.Dialer, upstreamServer st
 		dialer:         dialer,
 		upstreamServer: upstreamServer,
 		fakeNetwork:    fakeNetwork,
+
+		mapping:         make(map[string]uint32),
+		reversedMapping: make(map[uint32]string),
 	}
 	ones, bits := fakeNetwork.Mask.Size()
 	zeros := bits - ones
 	size := uint32((1 << zeros) - 1)
 	s.min = binary.BigEndian.Uint32(fakeNetwork.IP)
 	s.max = s.min - 1 + size
-	s.next.Store(s.min - 1)
+	s.next = s.min - 1
 	return s
 }
 
@@ -36,12 +38,13 @@ type Server struct {
 	upstreamServer string
 	fakeNetwork    *net.IPNet
 
-	next atomic.Uint32
+	next uint32
 	min  uint32
 	max  uint32
 
-	mapping         sync.Map
-	reversedMapping sync.Map
+	mutex           sync.Mutex
+	mapping         map[string]uint32
+	reversedMapping map[uint32]string
 }
 
 func (s *Server) Contains(ip net.IP) bool {
@@ -50,17 +53,16 @@ func (s *Server) Contains(ip net.IP) bool {
 
 func (s *Server) NameFromIP(ip net.IP) (name string) {
 	ipUint := binary.BigEndian.Uint32(ip)
-	value, ok := s.reversedMapping.Load(ipUint)
-	if !ok {
-		return ""
-	}
-	return value.(string)
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.reversedMapping[ipUint]
 }
 
 func (s *Server) reset() {
-	s.next.Store(s.min - 1)
-	s.mapping = sync.Map{}
-	s.reversedMapping = sync.Map{}
+	s.next = s.min - 1
+	s.mapping = make(map[string]uint32)
+	s.reversedMapping = make(map[uint32]string)
 }
 
 func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
@@ -88,21 +90,20 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		if dns.IsFqdn(domain) {
 			domain = domain[:len(domain)-1]
 		}
-		actual, loaded := s.mapping.LoadOrStore(domain, uint32(0))
-		if !loaded {
-			for {
-				next = s.next.Add(1)
-				if next > s.max {
-					s.reset()
-					continue
-				}
-				break
+
+		s.mutex.Lock()
+		next, ok := s.mapping[domain]
+		if !ok {
+			s.next += 1
+			if s.next > s.max {
+				s.reset()
+				s.next += 1
 			}
-			s.mapping.Store(domain, next)
-			s.reversedMapping.Store(next, domain)
-		} else {
-			next = actual.(uint32)
+			next = s.next
+			s.mapping[domain] = next
+			s.reversedMapping[next] = domain
 		}
+		s.mutex.Unlock()
 
 		m.Answer = []dns.RR{
 			&dns.A{
