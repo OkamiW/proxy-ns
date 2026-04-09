@@ -78,7 +78,6 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	switch question.Qtype {
-	case dns.TypeAAAA:
 	case dns.TypeA:
 		var (
 			ip   net.IP
@@ -115,6 +114,9 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 				A: binary.BigEndian.AppendUint32(ip, next),
 			},
 		}
+	case dns.TypeAAAA:
+		// empty response for AAAA questions
+		break
 	default:
 		conn, err := s.dialer.Dial("udp", s.upstreamServer)
 		if err != nil {
