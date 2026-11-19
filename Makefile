@@ -17,7 +17,9 @@ proxy-ns:
 
 install: proxy-ns
 	install -Dm 755 proxy-ns $(DESTDIR)$(bindir)/proxy-ns
-	setcap cap_sys_admin,cap_net_admin,cap_net_bind_service,cap_sys_chroot,cap_chown=ep $(DESTDIR)$(bindir)/proxy-ns
+ifeq ($(INSTALL_CAPABILITIES),1)
+	setcap cap_sys_admin,cap_net_admin,cap_net_bind_service,cap_chown=ep $(DESTDIR)$(bindir)/proxy-ns
+endif
 
 install-doc:
 	install -Dm 644 doc/proxy-ns.1 $(DESTDIR)$(datadir)/man/man1/proxy-ns.1

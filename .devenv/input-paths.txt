@@ -1,0 +1,10 @@
+/home/deng/.config/nixpkgs/overlays
+/home/deng/.config/nixpkgs/overlays.nix
+/home/deng/proxy-ns/.devenv/bootstrap/bootstrapLib.nix
+/home/deng/proxy-ns/.devenv/bootstrap/default.nix
+/home/deng/proxy-ns/.devenv/bootstrap/resolve-lock.nix
+/home/deng/proxy-ns/.env
+/home/deng/proxy-ns/devenv.local.nix
+/home/deng/proxy-ns/devenv.lock
+/home/deng/proxy-ns/devenv.nix
+/run/user/1000/devenv-341d42f/processes/native-manager.pid

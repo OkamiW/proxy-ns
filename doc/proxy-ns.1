@@ -68,25 +68,19 @@ cannot handle: DNS message types other than A and AAAA.
 .B --udp-session-timeout=<udp_session_timeout>
 Set UDP session timeout.
 
-.SH NOTES ON CAPABILITIES
-.PP
-.B cap_sys_admin
-is for setns system call.
-.PP
-.B cap_net_admin
-is for creating TUN device.
-.PP
-.B cap_net_bind_service
-is for the FakeDNS server listening on 127.0.0.1:53.
-.PP
-.B cap_sys_chroot
-is for setns into a new mount namespace.
-.PP
-.B cap_chown
-is for
-.B chown 0:0 /etc/resolv.conf.
-.PP
-All capabilities are dropped permanently before the program's main loop.
+.TP
+.B --userns=<bool>
+Use a user namespace for rootless operation (default true).
+.TP
+.B --sudo-drop=<bool>
+Restore the original sudo UID and GID and clear supplementary groups
+when started as root through sudo (default true).
+
+.SH PRIVILEGES
+Rootless operation requires permission to create a user namespace and
+access /dev/net/tun. With userns disabled, run with sufficient privileges
+or install the binary with file capabilities using
+.BR "make install INSTALL_CAPABILITIES=1" .
 
 .SH NOTES ON FAKEDNS
 .SS Advantages of FakeDNS:
