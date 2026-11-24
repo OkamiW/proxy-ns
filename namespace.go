@@ -7,10 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"syscall"
+	"strconv"
 
 	"proxy-ns/config"
-	"strconv"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -19,27 +18,25 @@ import (
 )
 
 type NetSetup struct {
-	TunName   string
-	TunIP     net.IP
-	TunMask   net.IPMask
-	TunIP6    net.IP
-	TunMask6  net.IPMask
-	FakeDNS   bool
-	DNSServer string
-	UserNS    bool
-	SudoDrop  bool
+	TunName       string
+	TunIP         net.IP
+	TunMask       net.IPMask
+	TunIP6        net.IP
+	TunMask6      net.IPMask
+	FakeDNS       bool
+	DNSServer     string
+	UserNS        bool
+	ControlSocket string
+	RestoreUID    int
+	RestoreGID    int
 }
 
-func parseNetSetup(name, ip, ip6, fakeDNS, dns, userNS, sudoDrop string) (*NetSetup, error) {
+func parseNetSetup(name, ip, ip6, fakeDNS, dns, userNS string) (*NetSetup, error) {
 	fake, err := strconv.ParseBool(fakeDNS)
 	if err != nil {
 		return nil, err
 	}
 	user, err := strconv.ParseBool(userNS)
-	if err != nil {
-		return nil, err
-	}
-	drop, err := strconv.ParseBool(sudoDrop)
 	if err != nil {
 		return nil, err
 	}
@@ -51,24 +48,22 @@ func parseNetSetup(name, ip, ip6, fakeDNS, dns, userNS, sudoDrop string) (*NetSe
 	return &NetSetup{
 		TunName: cfg.TunName, TunIP: cfg.TunIP, TunMask: cfg.TunMask,
 		TunIP6: cfg.TunIP6, TunMask6: cfg.TunMask6,
-		FakeDNS: fake, DNSServer: cfg.DNSServer, UserNS: user, SudoDrop: drop,
+		FakeDNS: fake, DNSServer: cfg.DNSServer, UserNS: user, RestoreUID: -1, RestoreGID: -1,
 	}, nil
 }
 
 func runNamespaceChild(cfg *NetSetup, args []string) error {
 	runtime.LockOSThread()
-	// The helper can also be invoked directly. Always isolate its mounts and network.
-	if err := unix.Unshare(unix.CLONE_NEWNS | unix.CLONE_NEWNET); err != nil {
-		return fmt.Errorf("create mount and network namespaces: %w", err)
-	}
-	socket := os.NewFile(3, "proxy control")
-	unix.CloseOnExec(3)
-	defer socket.Close()
-	parentPID := os.Getppid()
-	cred, err := sudoIdentity(cfg.SudoDrop, os.Geteuid())
+	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
+	socket := os.NewFile(uintptr(fd), "proxy control")
+	defer socket.Close()
+	if err := unix.Connect(fd, &unix.SockaddrUnix{Name: cfg.ControlSocket}); err != nil {
+		return fmt.Errorf("connect to supervisor: %w", err)
+	}
+	parentPID := os.Getppid()
 	var (
 		loLink, tunLink          netlink.Link
 		dnsServer                string
@@ -227,8 +222,9 @@ func runNamespaceChild(cfg *NetSetup, args []string) error {
 			unix.Close(tunFd)
 		}
 	}()
-	if cred != nil && !cfg.UserNS {
-		if err := setSudoIdentity(cred); err != nil {
+	if !cfg.UserNS && cfg.RestoreUID >= 0 &&
+		(cfg.RestoreUID != os.Geteuid() || cfg.RestoreGID != os.Getegid()) {
+		if err := dropSudo(cfg.RestoreUID, cfg.RestoreGID); err != nil {
 			return err
 		}
 		// Changing credentials can clear the parent-death signal.
@@ -276,16 +272,15 @@ func runNamespaceChild(cfg *NetSetup, args []string) error {
 	return unix.Exec(progName, args, os.Environ())
 }
 
-func setSudoIdentity(cred *syscall.Credential) error {
-	if err := unix.Setgroups(nil); err != nil {
-		return fmt.Errorf("clear sudo supplementary groups: %w", err)
+func dropSudo(uid, gid int) error {
+	if uid < 0 || gid < 0 || uint64(uid) >= 1<<32-1 || uint64(gid) >= 1<<32-1 {
+		return fmt.Errorf("invalid original UID/GID")
 	}
-	gid, uid := int(cred.Gid), int(cred.Uid)
 	if err := unix.Setresgid(gid, gid, gid); err != nil {
-		return fmt.Errorf("restore sudo GID: %w", err)
+		return fmt.Errorf("restore original GID: %w", err)
 	}
 	if err := unix.Setresuid(uid, uid, uid); err != nil {
-		return fmt.Errorf("restore sudo UID: %w", err)
+		return fmt.Errorf("restore original UID: %w", err)
 	}
 	return nil
 }

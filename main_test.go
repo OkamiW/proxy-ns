@@ -2,51 +2,15 @@ package main
 
 import (
 	"encoding/binary"
-	"golang.org/x/sys/unix"
+	"errors"
+	"fmt"
+	"net"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
-
-func TestSudoIdentity(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		enabled  bool
-		euid     int
-		uid, gid *string
-		want     bool
-		bad      bool
-	}{
-		{"absent", true, 0, nil, nil, false, false},
-		{"disabled", false, 0, idString("bad"), nil, false, false},
-		{"non-root", true, 1000, idString("bad"), nil, false, false},
-		{"incomplete", true, 0, idString("1000"), nil, false, true},
-		{"empty", true, 0, idString(""), idString("100"), false, true},
-		{"invalid", true, 0, idString("1000"), idString("4294967295"), false, true},
-		{"valid", true, 0, idString("1000"), idString("100"), true, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for key, value := range map[string]*string{"SUDO_UID": tc.uid, "SUDO_GID": tc.gid} {
-				t.Setenv(key, "")
-				if value == nil {
-					if err := os.Unsetenv(key); err != nil {
-						t.Fatal(err)
-					}
-				} else {
-					t.Setenv(key, *value)
-				}
-			}
-			cred, err := sudoIdentity(tc.enabled, tc.euid)
-			if (err != nil) != tc.bad || (cred != nil) != tc.want {
-				t.Fatalf("credential = %v, error = %v", cred, err)
-			}
-			if cred != nil && (cred.Uid != 1000 || cred.Gid != 100 || len(cred.Groups) != 0) {
-				t.Fatalf("unexpected credential: %+v", cred)
-			}
-		})
-	}
-}
-
-func idString(value string) *string { return &value }
 
 func TestReceiveProxyFiles(t *testing.T) {
 	for _, tc := range []struct {
@@ -62,12 +26,26 @@ func TestReceiveProxyFiles(t *testing.T) {
 		{"truncated payload", false, 1, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sockets, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+			path := filepath.Join(t.TempDir(), "control")
+			listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer unix.Close(sockets[0])
-			defer unix.Close(sockets[1])
+			defer listener.Close()
+			client, err := unix.Socket(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer unix.Close(client)
+			if err := unix.Connect(client, &unix.SockaddrUnix{Name: path}); err != nil {
+				t.Fatal(err)
+			}
+			control, err, exited := acceptChild(listener, make(chan error))
+			if err != nil || exited {
+				t.Fatalf("accept: %v, exited=%v", err, exited)
+			}
+			defer control.Close()
+			sockets := []int{client, int(control.Fd())}
 			file, err := os.Open(os.DevNull)
 			if err != nil {
 				t.Fatal(err)
@@ -115,5 +93,37 @@ func TestReceiveProxyFiles(t *testing.T) {
 				t.Fatalf("MTU=%d, received %d descriptors", mtu, len(received))
 			}
 		})
+	}
+}
+
+func TestAcceptChildExit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "control")
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	exited := make(chan error, 1)
+	want := errors.New("sudo cancelled")
+	exited <- want
+	file, err, stopped := acceptChild(listener, exited)
+	if file != nil || !errors.Is(err, want) || !stopped {
+		t.Fatalf("file=%v, error=%v, stopped=%v", file, err, stopped)
+	}
+}
+
+func TestNamespacePermission(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{fmt.Errorf("clone: %w", unix.EPERM), true},
+		{fmt.Errorf("clone: %w", unix.EACCES), true},
+		{unix.ENOENT, false},
+		{nil, false},
+	} {
+		if namespacePermission(tc.err) != tc.want {
+			t.Errorf("error=%v", tc.err)
+		}
 	}
 }

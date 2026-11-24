@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -20,66 +22,75 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func sudoIdentity(enabled bool, euid int) (*syscall.Credential, error) {
-	if !enabled || euid != 0 {
-		return nil, nil
+func namespaceAttributes(userNS bool) *syscall.SysProcAttr {
+	attr := &syscall.SysProcAttr{
+		Pdeathsig:  syscall.SIGKILL,
+		Cloneflags: unix.CLONE_NEWNET | unix.CLONE_NEWNS,
 	}
-	uidText, hasUID := os.LookupEnv("SUDO_UID")
-	gidText, hasGID := os.LookupEnv("SUDO_GID")
-	if !hasUID && !hasGID {
-		return nil, nil
-	}
-	uid, uidErr := strconv.ParseUint(uidText, 10, 32)
-	gid, gidErr := strconv.ParseUint(gidText, 10, 32)
-	if uidErr != nil || gidErr != nil || uid == 1<<32-1 || gid == 1<<32-1 ||
-		int(uid) < 0 || int(gid) < 0 {
-		return nil, fmt.Errorf("SUDO_UID and SUDO_GID must both contain valid numeric IDs")
-	}
-	return &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}, nil
-}
-
-func runMain(cfg *config.Config, args []string, quiet bool) (int, error) {
-	cred, err := sudoIdentity(cfg.SudoDrop, os.Geteuid())
-	if err != nil {
-		return 1, err
-	}
-	attr := &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
-	if cfg.UserNS {
+	if userNS {
+		attr.Cloneflags |= unix.CLONE_NEWUSER
 		uid, gid := os.Geteuid(), os.Getegid()
-		if cred != nil {
-			uid, gid = int(cred.Uid), int(cred.Gid)
-			attr.Credential = cred
-			attr.GidMappingsEnableSetgroups = true
-		}
-		attr.Cloneflags = unix.CLONE_NEWUSER
 		attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: uid, HostID: uid, Size: 1}}
 		attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: gid, HostID: gid, Size: 1}}
 		attr.AmbientCaps = []uintptr{unix.CAP_SYS_ADMIN, unix.CAP_NET_ADMIN, unix.CAP_NET_BIND_SERVICE}
 	}
+	return attr
+}
 
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		return 1, fmt.Errorf("create proxy control socket: %w", err)
+func namespacePermission(err error) bool {
+	return errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES)
+}
+
+func commandStatus(cmd *exec.Cmd, err error) (int, error) {
+	if cmd.ProcessState != nil {
+		if status := cmd.ProcessState.Sys().(syscall.WaitStatus); status.Signaled() {
+			return 128 + int(status.Signal()), nil
+		}
 	}
-	control := os.NewFile(uintptr(fds[0]), "proxy control")
-	defer control.Close()
-	childSocket := os.NewFile(uintptr(fds[1]), "child control")
+	if _, ok := err.(*exec.ExitError); ok {
+		return cmd.ProcessState.ExitCode(), nil
+	}
+	return 0, err
+}
 
-	signals := make(chan os.Signal, 8)
-	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	defer signal.Stop(signals)
+func forwardSignals(cmd *exec.Cmd, signals <-chan os.Signal, done <-chan struct{}) {
+	for {
+		select {
+		case sig := <-signals:
+			cmd.Process.Signal(sig)
+		case <-done:
+			return
+		}
+	}
+}
 
-	// Pdeathsig follows the OS thread that starts the child.
+func runMain(cfg *config.Config, args []string, quiet bool, restoreUID, restoreGID int) (int, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return 1, err
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	dir, err := os.MkdirTemp("", "proxy-ns-")
+	if err != nil {
+		return 1, err
+	}
+	defer os.RemoveAll(dir)
+	socketPath := filepath.Join(dir, "control")
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socketPath, Net: "unixpacket"})
+	if err != nil {
+		return 1, err
+	}
+	defer listener.Close()
 	childArgs := []string{
-		"--namespace-child",
+		"--namespace-child", "--control-socket", socketPath,
+		"--restore-uid", strconv.Itoa(restoreUID),
+		"--restore-gid", strconv.Itoa(restoreGID),
 		"--tun-name", cfg.TunName,
 		"--tun-ip", (&net.IPNet{IP: cfg.TunIP, Mask: cfg.TunMask}).String(),
 		"--fake-dns=" + strconv.FormatBool(cfg.FakeDNS),
 		"--dns-server", cfg.DNSServer,
 		"--userns=" + strconv.FormatBool(cfg.UserNS),
-		"--sudo-drop=" + strconv.FormatBool(cfg.SudoDrop),
 	}
 	if len(cfg.TunIP6) != 0 {
 		childArgs = append(childArgs, "--tun-ip6", (&net.IPNet{IP: cfg.TunIP6, Mask: cfg.TunMask6}).String())
@@ -88,63 +99,101 @@ func runMain(cfg *config.Config, args []string, quiet bool) (int, error) {
 		childArgs = append(childArgs, "-q")
 	}
 	childArgs = append(childArgs, "--")
-	cmd := exec.Command("/proc/self/exe", append(childArgs, args...)...)
-	cmd.Args[0] = os.Args[0]
+	childArgs = append(childArgs, args...)
+	cmd := exec.Command(executable, childArgs...)
+	cmd.SysProcAttr = namespaceAttributes(cfg.UserNS)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.ExtraFiles = []*os.File{childSocket}
-	cmd.SysProcAttr = attr
-	err = cmd.Start()
-	childSocket.Close()
-	if err != nil {
-		return 1, fmt.Errorf("start namespace child (userns=%t): %w", cfg.UserNS, err)
+	signals := make(chan os.Signal, 8)
+	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	if err := cmd.Start(); err != nil {
+		if !namespacePermission(err) {
+			return 1, fmt.Errorf("start namespace child: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "proxy-ns:", err)
+		fmt.Fprintln(os.Stderr, "proxy-ns: namespace creation requires permission; using sudo -P for temporary elevation and retrying.")
+		sudo, lookupErr := exec.LookPath("sudo")
+		if lookupErr != nil {
+			return 1, lookupErr
+		}
+		cfgPath, pathErr := filepath.Abs(flag.Lookup("c").Value.String())
+		if pathErr != nil {
+			return 1, pathErr
+		}
+		if restoreUID < 0 {
+			restoreUID, restoreGID = os.Geteuid(), os.Getegid()
+		}
+		options := os.Args[1 : len(os.Args)-len(args)]
+		if len(options) > 0 && options[len(options)-1] == "--" {
+			options = options[:len(options)-1]
+		}
+		sudoArgs := append([]string{"sudo", "-P", "--", executable}, options...)
+		sudoArgs = append(sudoArgs, "-c", cfgPath,
+			"--restore-uid", strconv.Itoa(restoreUID),
+			"--restore-gid", strconv.Itoa(restoreGID), "--")
+		sudoArgs = append(sudoArgs, args...)
+		// Exec replaces Main, so close its listener and remove the socket first.
+		listener.Close()
+		if err := os.RemoveAll(dir); err != nil {
+			return 1, err
+		}
+		signal.Stop(signals)
+		return 1, unix.Exec(sudo, sudoArgs, os.Environ())
 	}
-	os.Stdin.Close()
-	os.Stdout.Close()
-
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
 	done := make(chan struct{})
 	defer close(done)
-	go func() {
-		for {
-			select {
-			case sig := <-signals:
-				cmd.Process.Signal(sig)
-			case <-done:
-				return
-			}
-		}
-	}()
-
+	go forwardSignals(cmd, signals, done)
 	waited := false
 	defer func() {
 		if !waited {
-			control.Close()
-			cmd.Process.Kill()
-			cmd.Wait()
+			// Stop the namespace child if initialization fails.
+			cmd.Process.Signal(syscall.SIGTERM)
+			<-exited
 		}
 	}()
-
+	control, err, childExited := acceptChild(listener, exited)
+	if err != nil || childExited {
+		if childExited {
+			waited = true
+			status, waitErr := commandStatus(cmd, err)
+			if status == 0 && waitErr == nil {
+				return 1, fmt.Errorf("child exited before connecting")
+			}
+			return status, waitErr
+		}
+		return 1, err
+	}
+	defer control.Close()
+	listener.Close()
 	mtu, received, err := receiveProxyFiles(int(control.Fd()), cfg.FakeDNS)
 	if err != nil {
-		// A child that failed setup logs the original error before closing the socket.
 		return 1, err
 	}
 	defer unix.Close(received[0])
-
-	// Match the target UID so the supervisor can forward signals after dropping capabilities.
-	if cred != nil {
-		if err := setSudoIdentity(cred); err != nil {
+	// Own every received descriptor even if dropping capabilities fails.
+	var dnsFile *os.File
+	if cfg.FakeDNS {
+		dnsFile = os.NewFile(uintptr(received[1]), "FakeDNS listener")
+		defer dnsFile.Close()
+	}
+	os.Stdin.Close()
+	os.Stdout.Close()
+	if !cfg.UserNS && restoreUID >= 0 &&
+		(restoreUID != os.Geteuid() || restoreGID != os.Getegid()) {
+		if err := dropSudo(restoreUID, restoreGID); err != nil {
 			return 1, err
 		}
 	}
 	if err := dropPrivileges(); err != nil {
 		return 1, err
 	}
-
 	config.UDPSessionTimeout = cfg.UDPSessionTimeout
 	client := proxy.SOCKS5("tcp", cfg.Socks5Address, cfg.Username, cfg.Password)
 	var dns *fakedns.Server
 	if cfg.FakeDNS {
-		file := os.NewFile(uintptr(received[1]), "FakeDNS listener")
+		file := dnsFile
 		conn, err := net.FilePacketConn(file)
 		file.Close()
 		if err != nil {
@@ -166,17 +215,9 @@ func runMain(cfg *config.Config, args []string, quiet bool) (int, error) {
 	}
 	control.Close()
 
-	err = cmd.Wait()
+	err = <-exited
 	waited = true
-	if cmd.ProcessState != nil {
-		if status := cmd.ProcessState.Sys().(syscall.WaitStatus); status.Signaled() {
-			return 128 + int(status.Signal()), nil
-		}
-	}
-	if _, ok := err.(*exec.ExitError); ok {
-		return cmd.ProcessState.ExitCode(), nil
-	}
-	return 0, err
+	return commandStatus(cmd, err)
 }
 
 func receiveProxyFiles(socket int, fakeDNS bool) (uint32, []int, error) {
@@ -212,4 +253,50 @@ func receiveProxyFiles(socket int, fakeDNS bool) (uint32, []int, error) {
 // sendReady releases the helper only after the proxy has initialized.
 func sendReady(socket int) error {
 	return unix.Sendmsg(socket, []byte{1}, nil, nil, unix.MSG_NOSIGNAL)
+}
+
+func acceptChild(listener *net.UnixListener, exited <-chan error) (*os.File, error, bool) {
+	type result struct {
+		file *os.File
+		err  error
+	}
+	accepted := make(chan result, 1)
+	go func() {
+		for {
+			conn, err := listener.AcceptUnix()
+			if err != nil {
+				accepted <- result{err: err}
+				return
+			}
+			file, err := conn.File()
+			conn.Close()
+			if err != nil {
+				accepted <- result{err: err}
+				return
+			}
+			peer, err := unix.GetsockoptUcred(int(file.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
+			if err != nil {
+				file.Close()
+				accepted <- result{err: err}
+				return
+			}
+			if peer.Uid != uint32(os.Geteuid()) && peer.Uid != 0 {
+				file.Close()
+				continue
+			}
+			accepted <- result{file: file}
+			return
+		}
+	}()
+	select {
+	case value := <-accepted:
+		return value.file, value.err, false
+	case err := <-exited:
+		listener.Close()
+		value := <-accepted
+		if value.file != nil {
+			value.file.Close()
+		}
+		return nil, err, true
+	}
 }

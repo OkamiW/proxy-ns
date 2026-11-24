@@ -71,16 +71,19 @@ Set UDP session timeout.
 .TP
 .B --userns=<bool>
 Use a user namespace for rootless operation (default true).
-.TP
-.B --sudo-drop=<bool>
-Restore the original sudo UID and GID and clear supplementary groups
-when started as root through sudo (default true).
-
 .SH PRIVILEGES
 Rootless operation requires permission to create a user namespace and
 access /dev/net/tun. With userns disabled, run with sufficient privileges
 or install the binary with file capabilities using
 .BR "make install INSTALL_CAPABILITIES=1" .
+
+Namespace startup permission errors trigger a diagnostic and a retry through
+.BR "sudo -P" .
+The userns setting is preserved. Persistent namespace permission errors
+trigger further retries.
+Explicit sudo runs keep the sudo identity.
+An automatic sudo retry with userns disabled restores the original UID/GID
+after setup and preserves inherited supplementary groups.
 
 .SH NOTES ON FAKEDNS
 .SS Advantages of FakeDNS:

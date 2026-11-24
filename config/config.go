@@ -13,7 +13,6 @@ var UDPSessionTimeout = time.Minute
 
 type Data struct {
 	UserNS            *bool   `json:"userns,omitempty"`
-	SudoDrop          *bool   `json:"sudo_drop,omitempty"`
 	TunName           *string `json:"tun_name,omitempty"`
 	TunIP             *string `json:"tun_ip,omitempty"`
 	TunIP6            *string `json:"tun_ip6,omitempty"`
@@ -28,7 +27,6 @@ type Data struct {
 
 type Config struct {
 	UserNS            bool
-	SudoDrop          bool
 	TunName           string
 	TunIP             net.IP
 	TunMask           net.IPMask
@@ -46,9 +44,6 @@ type Config struct {
 func (cfg *Config) Update(data Data) error {
 	if data.UserNS != nil {
 		cfg.UserNS = *data.UserNS
-	}
-	if data.SudoDrop != nil {
-		cfg.SudoDrop = *data.SudoDrop
 	}
 	if data.TunName != nil {
 		if *data.TunName == "" {
@@ -162,7 +157,6 @@ func FromFile(path string) (*Config, error) {
 
 	cfg := Config{
 		UserNS:            true,
-		SudoDrop:          true,
 		UDPSessionTimeout: UDPSessionTimeout,
 	}
 	err = cfg.Update(data)

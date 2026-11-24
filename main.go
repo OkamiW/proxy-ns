@@ -25,7 +25,6 @@ Options:
 
 These options override settings in config file:
   --userns=<BOOL>                              Use a user namespace (default: true)
-  --sudo-drop=<BOOL>                            Restore the original sudo user (default: true)
   --tun-name=<TUN_NAME>                        Set tun device name
   --tun-ip=<TUN_IP>                            Set tun device IPv4 address
   --tun-ip6=<TUN_IP6>                          Set tun device IPv6 address (optional)
@@ -65,7 +64,9 @@ func main() {
 	dnsServer := flag.String("dns-server", "", "")
 	udpSessionTimeout := flag.Duration("udp-session-timeout", config.UDPSessionTimeout, "")
 	userNS := flag.String("userns", "true", "")
-	sudoDrop := flag.String("sudo-drop", "true", "")
+	controlSocket := flag.String("control-socket", "", "")
+	restoreUID := flag.Int("restore-uid", -1, "")
+	restoreGID := flag.Int("restore-gid", -1, "")
 	namespaceChild := flag.Bool("namespace-child", false, "")
 	flag.CommandLine.Usage = usage
 	flag.Parse()
@@ -88,8 +89,10 @@ func main() {
 	}
 
 	if *namespaceChild {
-		setup, err := parseNetSetup(*tunName, *tunIp, *tunIp6, *fakeDns, *dnsServer, *userNS, *sudoDrop)
+		setup, err := parseNetSetup(*tunName, *tunIp, *tunIp6, *fakeDns, *dnsServer, *userNS)
 		if err == nil {
+			setup.ControlSocket = *controlSocket
+			setup.RestoreUID, setup.RestoreGID = *restoreUID, *restoreGID
 			err = runNamespaceChild(setup, args)
 		}
 		if err != nil {
@@ -156,14 +159,6 @@ func main() {
 		}
 		data.UserNS = &userNSBool
 	}
-	if isFlagPresent("sudo-drop") {
-		sudoDropBool, err := strconv.ParseBool(*sudoDrop)
-		if err != nil {
-			usage()
-			os.Exit(1)
-		}
-		data.SudoDrop = &sudoDropBool
-	}
 
 	err = cfg.Update(data)
 	if err != nil {
@@ -171,7 +166,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	status, err := runMain(cfg, args, *quietMode)
+	status, err := runMain(cfg, args, *quietMode, *restoreUID, *restoreGID)
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)

@@ -35,7 +35,6 @@ If your SOCKS5 server has authentication, set =username= and
 #+begin_src js-json
   {
     "userns": true,
-    "sudo_drop": true,
     "tun_name": "tun0",
     "tun_ip": "10.0.0.1/24",
     "socks5_address": "127.0.0.1:1080",
@@ -122,9 +121,19 @@ Use =--userns=false= to require privileges in the starting namespace.
 This mode can run via =sudo= or with file capabilities installed via
 =sudo make install INSTALL_CAPABILITIES=1=.
 
-When started as root through sudo, the default =sudo_drop= restores the
-UID and GID from =SUDO_UID= and =SUDO_GID= and clears supplementary
-groups. Use =--sudo-drop=false= to keep the starting identity.
+The main process runs the proxy and directly creates the namespace child.
+The child initializes networking and then executes the target command
+in the same process.
+
+If namespace creation fails with EPERM or EACCES, the main process prints the
+error and retries through =sudo -P=. The original =userns= setting is
+preserved. If the elevated attempt still fails to create namespaces,
+proxy-ns prompts and retries again.
+
+Explicit =sudo proxy-ns= keeps the sudo identity. =sudo -P proxy-ns=
+also preserves the groups allowed by sudo policy. An automatic sudo
+fallback with =userns=false= restores the invoking UID and GID after
+network setup and keeps inherited supplementary groups.
 
 ** FAQ
 *** Why can't I ping as a normal user inside =proxy-ns=?
