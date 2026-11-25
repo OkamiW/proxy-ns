@@ -180,12 +180,6 @@ func runMain(cfg *config.Config, args []string, quiet bool, restoreUID, restoreG
 	}
 	os.Stdin.Close()
 	os.Stdout.Close()
-	if !cfg.UserNS && restoreUID >= 0 &&
-		(restoreUID != os.Geteuid() || restoreGID != os.Getegid()) {
-		if err := dropSudo(restoreUID, restoreGID); err != nil {
-			return 1, err
-		}
-	}
 	if err := dropPrivileges(); err != nil {
 		return 1, err
 	}
@@ -221,6 +215,10 @@ func runMain(cfg *config.Config, args []string, quiet bool, restoreUID, restoreG
 }
 
 func receiveProxyFiles(socket int, fakeDNS bool) (uint32, []int, error) {
+	expectedFDs := 1
+	if fakeDNS {
+		expectedFDs = 2
+	}
 	var mtu [4]byte
 	control := make([]byte, unix.CmsgSpace(8))
 	for {
@@ -240,7 +238,8 @@ func receiveProxyFiles(socket int, fakeDNS bool) (uint32, []int, error) {
 			}
 			files = append(files, rights...)
 		}
-		if err == nil && n == len(mtu) && flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) == 0 && ((!fakeDNS && len(files) == 1) || (fakeDNS && len(files) == 2)) {
+		if err == nil && n == len(mtu) &&
+			flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) == 0 && len(files) == expectedFDs {
 			return binary.BigEndian.Uint32(mtu[:]), files, nil
 		}
 		for _, fd := range files {
