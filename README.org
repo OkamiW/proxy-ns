@@ -114,26 +114,32 @@ latency. But it has its own limitations:
   (e.g. DNS may still work, but QUIC probably won't.)
 
 ** Rootless and sudo
-By default, =proxy-ns= needs a Linux system that permits unprivileged
-user namespaces and gives the invoking user access to =/dev/net/tun=.
+The =userns= setting defaults to =true=. Running without sudo in this mode
+requires permission to create user namespaces and access =/dev/net/tun=.
 
 Use =--userns=false= to require privileges in the starting namespace.
 This mode can run via =sudo= or with file capabilities installed via
 =sudo make install INSTALL_CAPABILITIES=1=.
 
-The main process runs the proxy and directly creates the namespace child.
-The child initializes networking and then executes the target command
-in the same process.
+The main process runs the proxy in the host network namespace and directly
+starts a child in new network and mount namespaces. With =userns=true=,
+the child also enters a new user namespace. The child configures TUN and
+DNS, then passes their file descriptors to the main process over a Unix
+socket. Once the proxy is ready, the child executes the target command in
+the same process.
 
-If namespace creation fails with EPERM or EACCES, the main process prints the
-error and retries through =sudo -P=. The original =userns= setting is
-preserved. If the elevated attempt still fails to create namespaces,
-proxy-ns prompts and retries again.
+If starting the namespace child returns =EPERM= or =EACCES=, the main
+process prints the error and an elevation notice, even with =-q=. It then
+re-executes =proxy-ns= through =sudo -P= with the current configuration
+and target arguments. The new main process tries to start the child again
+with the same =userns= setting. Later errors during TUN or DNS setup are
+reported without a sudo retry.
 
 Explicit =sudo proxy-ns= keeps the sudo identity. =sudo -P proxy-ns=
 also preserves the groups allowed by sudo policy. An automatic sudo
-fallback with =userns=false= restores the invoking UID and GID after
-network setup and keeps inherited supplementary groups.
+fallback with =userns=false= restores the invoking UID and GID in the
+child after network setup and keeps inherited supplementary groups. With
+=userns=true=, the child maps the effective UID and GID of the sudo run.
 
 ** FAQ
 *** Why can't I ping as a normal user inside =proxy-ns=?
