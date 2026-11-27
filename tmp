@@ -1,7 +1,0 @@
-codex --no-daemon resume --last
-
-然后输入 /hooks，检查 Ponytail 的状态。若标记为内容已变化，在这里审核并信任当前版本。这个入口会更新正式授权记录。官方说明 (https://learn.chatgpt.com/docs/hooks)
-
-如果只想让已审核的 hooks 暂时正常运行，你当前版本支持：
-
-codex --dangerously-bypass-hook-trust resume --last
