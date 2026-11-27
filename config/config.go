@@ -12,6 +12,7 @@ import (
 var UDPSessionTimeout = time.Minute
 
 type Data struct {
+	UserNS            *bool   `json:"userns,omitempty"`
 	TunName           *string `json:"tun_name,omitempty"`
 	TunIP             *string `json:"tun_ip,omitempty"`
 	TunIP6            *string `json:"tun_ip6,omitempty"`
@@ -25,6 +26,7 @@ type Data struct {
 }
 
 type Config struct {
+	UserNS            bool
 	TunName           string
 	TunIP             net.IP
 	TunMask           net.IPMask
@@ -40,6 +42,9 @@ type Config struct {
 }
 
 func (cfg *Config) Update(data Data) error {
+	if data.UserNS != nil {
+		cfg.UserNS = *data.UserNS
+	}
 	if data.TunName != nil {
 		if *data.TunName == "" {
 			return errors.New("Empty tun name")
@@ -151,6 +156,7 @@ func FromFile(path string) (*Config, error) {
 	}
 
 	cfg := Config{
+		UserNS:            true,
 		UDPSessionTimeout: UDPSessionTimeout,
 	}
 	err = cfg.Update(data)

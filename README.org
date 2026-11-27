@@ -34,6 +34,7 @@ If your SOCKS5 server has authentication, set =username= and
 
 #+begin_src js-json
   {
+    "userns": true,
     "tun_name": "tun0",
     "tun_ip": "10.0.0.1/24",
     "socks5_address": "127.0.0.1:1080",
@@ -112,15 +113,33 @@ latency. But it has its own limitations:
   If you enable FakeDNS, all UDP packets to domains will be dropped.
   (e.g. DNS may still work, but QUIC probably won't.)
 
-** Notes on capabilities
-- =cap_sys_admin= is for =setns= system call.
-- =cap_net_admin= is for creating TUN device.
-- =cap_net_bind_service= is for the FakeDNS server listening on =127.0.0.1:53=.
-- =cap_sys_chroot= is for =setns= into a new mount namespace.
-- =cap_chown= is for =chown 0:0 /etc/resolv.conf=.
+** Rootless and sudo
+The =userns= setting defaults to =true=. Running without sudo in this mode
+requires permission to create user namespaces and access =/dev/net/tun=.
 
-All capabilities are dropped permanently before the program's main loop
-(See =dropPrivilege= in =main.go=).
+Use =--userns=false= to require privileges in the starting namespace.
+This mode can run via =sudo= or with file capabilities installed via
+=sudo make install INSTALL_CAPABILITIES=1=.
+
+The main process runs the proxy in the host network namespace and directly
+starts a child in new network and mount namespaces. With =userns=true=,
+the child also enters a new user namespace. The child configures TUN and
+DNS, then passes their file descriptors to the main process over a Unix
+socket. Once the proxy is ready, the child executes the target command in
+the same process.
+
+If starting the namespace child returns =EPERM= or =EACCES=, the main
+process prints the error and an elevation notice, even with =-q=. It then
+re-executes =proxy-ns= through =sudo -P= with the current configuration
+and target arguments. The new main process tries to start the child again
+with the same =userns= setting. Later errors during TUN or DNS setup are
+reported without a sudo retry.
+
+Explicit =sudo proxy-ns= keeps the sudo identity. =sudo -P proxy-ns=
+also preserves the groups allowed by sudo policy. An automatic sudo
+fallback with =userns=false= restores the invoking UID and GID in the
+child after network setup and keeps inherited supplementary groups. With
+=userns=true=, the child maps the effective UID and GID of the sudo run.
 
 ** FAQ
 *** Why can't I ping as a normal user inside =proxy-ns=?
