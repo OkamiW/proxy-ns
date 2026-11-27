@@ -123,15 +123,7 @@ func runMain(cfg *config.Config, args []string, quiet bool, restoreUID, restoreG
 		if restoreUID < 0 {
 			restoreUID, restoreGID = os.Geteuid(), os.Getegid()
 		}
-		options := os.Args[1 : len(os.Args)-len(args)]
-		if len(options) > 0 && options[len(options)-1] == "--" {
-			options = options[:len(options)-1]
-		}
-		sudoArgs := append([]string{"sudo", "-P", "--", executable}, options...)
-		sudoArgs = append(sudoArgs, "-c", cfgPath,
-			"--restore-uid", strconv.Itoa(restoreUID),
-			"--restore-gid", strconv.Itoa(restoreGID), "--")
-		sudoArgs = append(sudoArgs, args...)
+		sudoArgs := sudoRetryArgs(flag.CommandLine, executable, cfgPath, restoreUID, restoreGID)
 		// Exec replaces Main, so close its listener and remove the socket first.
 		listener.Close()
 		if err := os.RemoveAll(dir); err != nil {
@@ -212,6 +204,21 @@ func runMain(cfg *config.Config, args []string, quiet bool, restoreUID, restoreG
 	err = <-exited
 	waited = true
 	return commandStatus(cmd, err)
+}
+
+func sudoRetryArgs(flags *flag.FlagSet, executable, configPath string, uid, gid int) []string {
+	args := []string{"sudo", "-P", "--", executable}
+	flags.Visit(func(option *flag.Flag) {
+		switch option.Name {
+		case "c", "restore-uid", "restore-gid":
+			return
+		}
+		args = append(args, "--"+option.Name+"="+option.Value.String())
+	})
+	args = append(args, "-c", configPath,
+		"--restore-uid="+strconv.Itoa(uid),
+		"--restore-gid="+strconv.Itoa(gid), "--")
+	return append(args, flags.Args()...)
 }
 
 func receiveProxyFiles(socket int, fakeDNS bool) (uint32, []int, error) {

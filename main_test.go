@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -125,5 +127,23 @@ func TestNamespacePermission(t *testing.T) {
 		if namespacePermission(tc.err) != tc.want {
 			t.Errorf("error=%v", tc.err)
 		}
+	}
+}
+
+func TestSudoRetryArgs(t *testing.T) {
+	flags := flag.NewFlagSet("proxy-ns", flag.ContinueOnError)
+	flags.String("c", "", "")
+	flags.Int("restore-uid", -1, "")
+	flags.Int("restore-gid", -1, "")
+	flags.String("username", "", "")
+	if err := flags.Parse([]string{"-c", "./proxy.json", "--restore-uid=1000",
+		"--restore-gid=1000", "--username", "--", "curl", "--version", "--"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sudo", "-P", "--", "/usr/local/bin/proxy-ns", "--username=--",
+		"-c", "/work/proxy.json", "--restore-uid=1000", "--restore-gid=1000",
+		"--", "curl", "--version", "--"}
+	if got := sudoRetryArgs(flags, "/usr/local/bin/proxy-ns", "/work/proxy.json", 1000, 1000); !slices.Equal(got, want) {
+		t.Fatalf("sudo argv = %q, want %q", got, want)
 	}
 }
